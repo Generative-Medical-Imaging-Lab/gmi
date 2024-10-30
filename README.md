@@ -1,6 +1,6 @@
 # Generative Medical Imaging Laboratory (GMI)
 
-The **Generative Medical Imaging Laboratory (GMI)** is a Python package designed to support advanced computational imaging research. GMI provides a suite of tools for linear algebra, stochastic differential equations, and diffusion models, built upon PyTorch to facilitate robust and scalable development of imaging solutions. 
+The **Generative Medical Imaging Laboratory (GMI)** is a Python package designed to support advanced computational imaging research. GMI provides a suite of tools for linear algebra, stochastic differential equations, and diffusion models, built on PyTorch. 
 
 ## Features
 - Comprehensive linear algebra modules for matrix operations and decompositions
