@@ -1,7 +1,3 @@
-# Removing the triple backticks for code sections and saving to a .txt file
-
-# Adjusted README content without code block notation
-readme_content_plain = """
 # Generative Medical Imaging Laboratory (GMI)
 
 The **Generative Medical Imaging Laboratory (GMI)** is a Python package designed to support advanced computational imaging research. GMI provides a suite of tools for linear algebra, stochastic differential equations, and diffusion models, built upon PyTorch to facilitate robust and scalable development of imaging solutions. 
