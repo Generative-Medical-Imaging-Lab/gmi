@@ -8,7 +8,7 @@ class LinearOperator(torch.nn.Module):
 
         It inherits from torch.nn.Module.
         
-        It requires the methods forward and adjoint to be implemented.
+        It requires the methods forward and transpose to be implemented.
 
         parameters:
             None
