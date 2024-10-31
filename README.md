@@ -13,7 +13,9 @@ The **Generative Medical Imaging Laboratory (GMI)** is a Python package designed
 
 You can install the GMI package directly from GitHub using the following command:
 
+```bash
 pip install git+https://github.com/Generative-Medical-Imaging-Lab/gmi.git
+```
 
 This will install the package and all required dependencies, enabling you to directly use its functionality within your Python environment.
 
@@ -29,7 +31,9 @@ Additional dependencies will be installed automatically with the package.
 
 After installation, you can import the `gmi` package and use its modules in your Python projects as shown below:
 
+```python
 import gmi
+```
 
 ## License
 
