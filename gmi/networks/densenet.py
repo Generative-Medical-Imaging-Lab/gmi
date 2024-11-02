@@ -27,6 +27,8 @@ class DenseNet(nn.Module):
         # Ensure activation is a list and matches the length of hidden_channels_list
         if isinstance(activation, str):
             activation = [activation] * len(hidden_channels_list)
+        if isinstance(activation, nn.Module):
+            activation = [activation] * len(hidden_channels_list)
         elif isinstance(activation, list) and len(activation) != len(hidden_channels_list):
             raise ValueError("Length of activation functions list must match the length of hidden_channels_list")
 
@@ -86,5 +88,7 @@ class DenseNet(nn.Module):
             return nn.Tanh()
         elif activation == 'linear':
             return nn.Identity()
+        elif isinstance(activation, nn.Module):
+            return activation
         else:
             raise ValueError(f"Unsupported activation function: {activation}")

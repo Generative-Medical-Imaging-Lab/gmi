@@ -4,9 +4,6 @@ import torch
 import os
 import nibabel as nib
 
-
-
-
 class SynthRad2023Task1CTSlice_Dataset(torch.utils.data.Dataset):
     def __init__(self, root_dir, verbose=False):
         self.root_dir = root_dir
