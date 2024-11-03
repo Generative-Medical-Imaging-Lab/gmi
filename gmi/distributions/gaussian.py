@@ -70,7 +70,8 @@ class LinearSystemGaussianNoise(ConditionalGaussianDistribution):
 
 
 class AdditiveWhiteGaussianNoise(ConditionalGaussianDistribution):
-    def __init__(self, noise_variance):
+    def __init__(self, noise_standard_deviation):
+        noise_variance = noise_standard_deviation ** 2
         noise_covariance_linear_operator = ScalarLinearOperator(noise_variance)
         mu_fn = lambda y: y
         Sigma_fn = lambda y: noise_covariance_linear_operator

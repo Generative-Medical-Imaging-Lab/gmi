@@ -1,4 +1,3 @@
-# random_tensor_laboratory/linalg/__init__.py
 
 from . import core
 from . import fourier

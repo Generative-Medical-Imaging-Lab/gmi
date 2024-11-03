@@ -10,6 +10,7 @@ mnist_denoising_dir = os.path.dirname(os.path.abspath(__file__))
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
+
 # define the dataset
 MNIST_Dataset_train = gmi.datasets.MNIST(
                                     train=True, 
