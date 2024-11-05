@@ -239,10 +239,10 @@ class StochasticDifferentialEquation(nn.Module):
     
 
 
-class HomogeneousSDE(StochasticDifferentialEquation):
+class LinearSDE(StochasticDifferentialEquation):
     def __init__(self, H, Sigma, H_prime=None, Sigma_prime=None, F=None, G=None):
         """
-        This class implements a homogeneous stochastic differential equation (SDE) of the form:
+        This class implements a linear stochastic differential equation (SDE) of the form:
         dx = F(t) @ x dt + G(t) dw
         where F and G are derived from H and Sigma if not directly provided.
 
@@ -291,7 +291,7 @@ class HomogeneousSDE(StochasticDifferentialEquation):
         _f = lambda x, t: self.F(t) @ x
         _G = lambda x, t: self._G(t)
 
-        super(HomogeneousSDE, self).__init__(f=_f, G=_G)
+        super(LinearSDE, self).__init__(f=_f, G=_G)
         
     def reverse_SDE_given_score_estimator(self, score_estimator):
         """
@@ -347,9 +347,18 @@ class HomogeneousSDE(StochasticDifferentialEquation):
         """
         
         def score_estimator(x, t):
+
+            assert isinstance(x, torch.Tensor), "x must be a tensor."
+
+            Sigma_t = self.Sigma(t)
+
+            assert isinstance(Sigma_t, InvertibleLinearOperator), "Sigma(t) must be an InvertibleLinearOperator."
+
+            Sigma_t_inv = self.Sigma(t).inverse_LinearOperator()
+
             mu_t = mean_estimator(x, t)
-            sigma_t_inv = self.Sigma(t).inverse_LinearOperator()
-            return sigma_t_inv @ (mu_t-x)
+
+            return Sigma_t_inv @ (mu_t-x)
 
         return self.reverse_SDE_given_score_estimator(score_estimator)
 
@@ -468,10 +477,10 @@ class HomogeneousSDE(StochasticDifferentialEquation):
         return self.reverse_SDE_given_score_estimator(score_estimator)
 
         
-class ScalarSDE(HomogeneousSDE):
+class ScalarSDE(LinearSDE):
     def __init__(self, signal_scale, noise_variance, signal_scale_prime=None, noise_variance_prime=None):
         """
-        This class implements a scalar homogeneous stochastic differential equation (SDE).
+        This class implements a scalar stochastic differential equation (SDE).
 
         dx = f(t) x dt + g(t) dw
 
@@ -501,10 +510,10 @@ class ScalarSDE(HomogeneousSDE):
 
         super(ScalarSDE, self).__init__(H, Sigma, H_prime, Sigma_prime)
 
-class DiagonalSDE(HomogeneousSDE):
+class DiagonalSDE(LinearSDE):
     def __init__(self, signal_scale, noise_variance, signal_scale_prime=None, noise_variance_prime=None):
         """
-        This class implements a diagonal homogeneous stochastic differential equation (SDE).
+        This class implements a diagonal stochastic differential equation (SDE).
 
         Parameters:
             signal_scale: callable
@@ -532,10 +541,10 @@ class DiagonalSDE(HomogeneousSDE):
 
         super(DiagonalSDE, self).__init__(H, Sigma, H_prime, Sigma_prime)
 
-class FourierSDE(HomogeneousSDE):
+class FourierSDE(LinearSDE):
     def __init__(self, transfer_function, noise_power_spectrum, dim, transfer_function_prime=None, noise_power_spectrum_prime=None):
         """
-        This class implements a Fourier homogeneous stochastic differential equation (SDE).
+        This class implements a Fourier stochastic differential equation (SDE).
 
         Parameters:
             transfer_function: callable

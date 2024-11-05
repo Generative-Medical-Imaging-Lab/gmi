@@ -1,94 +1,23 @@
 import torch
-from ..sde import HomogeneousSDE
+from ..sde import LinearSDE
 
 
-class UnconditionalDiffusionBackbone(torch.nn.Module):
-    def __init__(self,
-                 image_encoder,
-                 time_encoder,
-                 final_estimator):
-        
-        """
-        This is an abstract base class for diffusion backbones.
-
-        It inherits from torch.nn.Module.
-
-        parameters:
-            None
-        """
-
-        assert isinstance(image_encoder, torch.nn.Module)
-        assert isinstance(time_encoder, torch.nn.Module)
-        assert isinstance(final_estimator, torch.nn.Module)
-
-        super(UnconditionalDiffusionBackbone, self).__init__()
-
-        self.image_encoder = image_encoder
-        self.time_encoder = time_encoder
-        self.final_estimator = final_estimator
-
-    def forward(self, x: torch.Tensor, t: torch.Tensor):
-
-        """
-        This method implements the forward pass of the linear operator, i.e. the matrix-vector product.
-
-        parameters:
-            x: torch.Tensor 
-                The input tensor to the linear operator.
-        returns:
-            result: torch.Tensor of shape [batch_size, num_channel, *output_shape]
-                The result of applying the linear operator to the input tensor.
-        """
-        image_embedding = self.image_encoder(x)
-        time_embedding = self.time_encoder(t)
-
-        return self.final_estimator(image_embedding, time_embedding)
-
-
-
-
-
-
-
-
-class UnconditionalDiffusionModel(torch.nn.Module):
+class DiffusionModel(torch.nn.Module):
     def __init__(self,
                  forward_SDE,
-                 diffusion_backbone,
-                 estimator_type='score',
-                 batch_size=None,
-                 sampler=None,
-                 initializer=None,
-                 time_scheduler=None,
-                 load_weights_filename=None
+                 diffusion_backbone
                  ):
         """
         This is an abstract base class for diffusion models.
-
-        It inherits from torch.nn.Module.
-        
-        It requires the methods sample_x_t_given_x_0 and sample_x_t_minus_dt_given_x_t to be implemented.
-
-        parameters:
-            None
         """
 
-        assert isinstance(forward_SDE, HomogeneousSDE)
+        assert isinstance(forward_SDE, LinearSDE)
         assert isinstance(diffusion_backbone, torch.nn.Module)
 
-        super(UnconditionalDiffusionModel, self).__init__()
+        super(DiffusionModel, self).__init__()
 
         self.diffusion_backbone = diffusion_backbone
         self.forward_SDE = forward_SDE
-
-        if estimator_type == 'score':
-            self.reverse_SDE = self.forward_SDE.reverse_SDE_given_score_estimator(self.diffusion_backbone)
-        elif estimator_type == 'mean':
-            self.reverse_SDE = self.forward_SDE.reverse_SDE_given_mean_estimator(self.diffusion_backbone)
-        elif estimator_type == 'noise':
-            self.reverse_SDE = self.forward_SDE.reverse_SDE_given_noise_estimator(self.diffusion_backbone)
-
-        self.estimator_type = estimator_type
 
     def forward(self, x_0: torch.Tensor, t: torch.Tensor):
         """
@@ -102,47 +31,14 @@ class UnconditionalDiffusionModel(torch.nn.Module):
                 The result of applying the linear operator to the input tensor.
         """
 
-        return self.sample_x_t_given_x_0(x_0, t)
-    
-    def sample_x_t_given_x_0(self, x_0: torch.Tensor, t: torch.Tensor):
-        """
-        This method samples x_t given x_0.
-
-        parameters:
-            x_0: torch.Tensor 
-                The initial condition.
-            t: float
-                The time step.
-        returns:
-            x_t: torch.Tensor
-                The sample at time t.
-        """
         return self.forward_SDE.sample_x_t_given_x_0(x_0, t)
     
-
-    def sample_x_t_given_x_0_and_noise(self, x_0: torch.Tensor, noise: torch.Tensor, t: torch.Tensor):
-        """
-        This method samples x_t given x_0 and noise.
-
-        parameters:
-            x_0: torch.Tensor 
-                The initial condition.
-            noise: torch.Tensor
-                The noise.
-            t: float
-                The time step.
-        returns:
-            x_t: torch.Tensor
-                The sample at time t.
-        """
-        return self.forward_SDE.sample_x_t_given_x_0_and_noise(x_0, noise, t)
-
-    def forward_sample(self, x, timesteps, sampler='euler', return_all=False):
+    def sample_forward_process(self, x_t, timesteps, sampler='euler', return_all=False):
         """
         This method samples from the forward SDE.
 
         parameters:
-            x: torch.Tensor
+            x_t: torch.Tensor
                 The initial condition.
             timesteps: int
                 The number of timesteps to sample.
@@ -153,26 +49,40 @@ class UnconditionalDiffusionModel(torch.nn.Module):
                 The output tensor.
         """
 
-        return self.forward_SDE.sample(x, timesteps, sampler, return_all)
+        return self.forward_SDE.sample(x_t, timesteps, sampler, return_all)
 
-    def reverse_sample(self, x, timesteps, sampler='euler', return_all=False, verbose=False):
+    def sample_reverse_process(self, x_t, timesteps, sampler='euler', return_all=False, y=None):
         """
         This method samples from the reverse SDE.
 
         parameters:
-            x: torch.Tensor
+            x_t: torch.Tensor
                 The initial condition.
             timesteps: int
                 The number of timesteps to sample.
             sampler: str
                 The method used to compute the forward update. Currently, only 'euler' and 'heun' are supported.
+            return_all: bool
+                If True, the method returns all intermediate samples.
+            y: torch.Tensor
+                The conditional input to the reverse SDE.
         returns:
             x: torch.Tensor
                 The output tensor.
         """
-        return self.reverse_SDE.sample(x, timesteps, sampler, return_all, verbose=verbose)
+        # we assume the diffusion_backbone estimates the posterior mean of x_0 given x_t, t, and y
+        def mean_estimator(x_t, t):
+            return self.predict_x_0(x_t, t, y)
+
+        # define the reverse SDE, based on the mean estimator,
+        # Tweedies's formula to get the score function, 
+        # Anderson's formula to get the reverse SDE
+        reverse_SDE = self.forward_SDE.reverse_SDE_given_mean_estimator(mean_estimator)
+
+
+        return reverse_SDE.sample(x_t, timesteps, sampler, return_all)
     
-    def predict_x_0_given_x_t(self, x_t: torch.Tensor, t: torch.Tensor):
+    def predict_x_0(self, x_t: torch.Tensor, t: torch.Tensor, y=None):
         """
         This method predicts x_0 given x_t.
 
@@ -186,107 +96,83 @@ class UnconditionalDiffusionModel(torch.nn.Module):
                 The predicted initial condition.
         """
 
-        if self.estimator_type == 'mean':
-            return self.diffusion_backbone(x_t, t)
-        elif self.estimator_type == 'score':
-            # need to implement Tweedies formula here
-            raise NotImplementedError
-        elif self.estimator_type == 'noise':
-            raise NotImplementedError
-        
-    def predict_noise_given_x_t(self, x_t: torch.Tensor, t: torch.Tensor):
-        """
-        This method predicts the noise given x_t.
+        assert isinstance(x_t, torch.Tensor)
+        assert isinstance(t, torch.Tensor)
+        if y is not None:
+            assert isinstance(y, torch.Tensor)
 
-        parameters:
-            x_t: torch.Tensor
-                The sample at time t.
-            t: float
-                The time step.
-        returns:
-            noise: torch.Tensor
-                The predicted noise.
-        """
+        if y is None:
+            x_0_pred =  self.diffusion_backbone(x_t, t)
+        else:
+            x_0_pred =  self.diffusion_backbone(x_t, t, y)
 
-        if self.estimator_type == 'mean':
-            raise NotImplementedError
-        elif self.estimator_type == 'score':
-            raise NotImplementedError
-        elif self.estimator_type == 'noise':
-            return self.diffusion_backbone(x_t, t)
-    
+        return x_0_pred
 
 
 
-
-class UnconditionalScoreBasedDiffusionModel(UnconditionalDiffusionModel):
+class DiffusionBackbone(torch.nn.Module):
     def __init__(self,
-                 stochastic_differential_equation,
-                 backbone,
-                 sampler=None,
-                 ):
-        """
-        This is an abstract base class for unconditional score-based diffusion models.
-
-        It inherits from torch.nn.Module.
+                 x_t_encoder,
+                 t_encoder,
+                 x_0_predictor,
+                 y_encoder=None):
         
-        It requires the methods score, score_and_sample, and sample_x_t_given_x_0 to be implemented.
+        """
+        
+        This is designed to implement a diffusion backbone. It predicts x_0 given x_t, t, and y embeddings.
+
+        x_t is a sample from the forward or reverse diffusion process at time t, it is a tensor of shape [batch_size, *x_t.shape]
+        t is the time step. We assume it is a tensor of shape [batch_size, 1]
+        y is an optional conditional input to the diffusion backbone, it is a tensor of shape [batch_size, *y.shape]
+
 
         parameters:
-            None
+            x_t_encoder: torch.nn.Module
+                The neural network that encodes information from x_t.
+            t_encoder: torch.nn.Module
+                The neural network that encodes information from t.
+            x_0_predictor: torch.nn.Module
+                The neural network that predicts x_0 given x_t, t, and y embeddings.
+            y_encoder: torch.nn.Module
+                The optional neural network that encodes information from y.
+        """
+        
+
+        assert isinstance(x_t_encoder, torch.nn.Module)
+        assert isinstance(t_encoder, torch.nn.Module)
+        assert isinstance(x_0_predictor, torch.nn.Module)
+
+        if y_encoder is not None:
+            assert isinstance(y_encoder, torch.nn.Module)
+
+        super(DiffusionBackbone, self).__init__()
+
+        self.x_t_encoder = x_t_encoder
+        self.t_encoder = t_encoder
+        self.x_0_predictor = x_0_predictor
+        self.y_encoder = y_encoder
+
+    def forward(self, x: torch.Tensor, t: torch.Tensor, y=None):
+
+        """
+        This method implements the forward pass of the diffusion backbone.
+
         """
 
-        assert isinstance(stochastic_differential_equation, StochasticDifferentialEquation)
-        assert isinstance(neural_network, torch.nn.Module)
+        assert isinstance(x, torch.Tensor)
+        assert isinstance(t, torch.Tensor)
+        if y is not None:
+            assert isinstance(y, torch.Tensor)
+        
+        x_t_embedding = self.x_t_encoder(x)
+        t_embedding = self.t_encoder(t)
+        if y is not None:
+            y_embedding = self.y_encoder(y)
+            x_0_pred = self.x_0_predictor(x_t_embedding, t_embedding, y_embedding)
+        else:
+            x_0_pred = self.x_0_predictor(x_t_embedding, t_embedding)
+        
+        return x_0_pred
 
-        super(UnconditionalScoreBasedDiffusionModel, self).__init__()
-    
-    def score(self, x: torch.Tensor, t: torch.Tensor):
-        """
-        This method calculates the score of the diffusion model at time t.
 
-        parameters:
-            x: torch.Tensor 
-                The input tensor to the diffusion model.
-            t: float
-                The time step.
-        returns:
-            score: torch.Tensor
-                The score of the diffusion model at time t.
-        """
 
-        raise NotImplementedError
-    
-    def score_and_sample(self, x: torch.Tensor, t: torch.Tensor):
-        """
-        This method calculates the score of the diffusion model at time t and samples x_t given x.
-
-        parameters:
-            x: torch.Tensor 
-                The input tensor to the diffusion model.
-            t: float
-                The time step.
-        returns:
-            score: torch.Tensor
-                The score of the diffusion model at time t.
-            x_t: torch.Tensor
-                The sample at time t.
-        """
-
-        raise NotImplementedError
-    
-    def sample_x_t_given_x_0(self, x_0: torch.Tensor, t: torch.Tensor):
-        """
-        This method samples x_t given x_0.
-
-        parameters:
-            x_0: torch.Tensor 
-                The initial condition.
-            t: float
-                The time step.
-        returns:
-            x_t: torch.Tensor
-                The sample at time t.
-        """
-
-        raise NotImplementedError

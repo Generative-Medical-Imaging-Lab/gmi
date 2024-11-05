@@ -54,7 +54,6 @@ denoiser = gmi.networks.SimpleCNN(input_channels=3,
                                     activation=torch.nn.SiLU(),
                                     dim=2).to(device)
 
-
 # define the denoising task
 mnist_denoising_task = gmi.tasks.ImageReconstructionTask(
                                         image_dataset = dataset_train,
