@@ -37,7 +37,7 @@ import gmi
 
 ## License
 
-This project is licensed under the MIT License. For more details, see the LICENSE file: https://github.com/Generative-Medical-Imaging-Lab/gmi/LICENSE.
+This project is licensed under the MIT License. For more details, see the LICENSE file: https://github.com/Generative-Medical-Imaging-Lab/LICENSE.
 
 ---
 
