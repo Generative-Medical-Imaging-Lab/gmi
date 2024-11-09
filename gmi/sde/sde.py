@@ -592,7 +592,6 @@ class SongVarianceExplodingProcess(ScalarSDE):
 
         super(SongVarianceExplodingProcess, self).__init__(signal_scale=signal_scale, noise_variance=noise_variance, signal_scale_prime=signal_scale_prime, noise_variance_prime=noise_variance_prime)
 
-
 class SongVariancePreservingProcess(ScalarSDE):
     def __init__(self, beta=5.0):
         """
@@ -612,6 +611,21 @@ class SongVariancePreservingProcess(ScalarSDE):
         noise_variance_prime = lambda t: beta
 
         super(SongVariancePreservingProcess, self).__init__(signal_scale=signal_scale, noise_variance=noise_variance, signal_scale_prime=signal_scale_prime, noise_variance_prime=noise_variance_prime)
+
+
+
+class WienerProcess(SongVarianceExplodingProcess):
+    def __init__(self):
+        """
+        This class implements a Wiener process, which is a Song variance-exploding process with sigma_1 = 1.
+        """
+
+        noise_variance = lambda t: t
+        noise_variance_prime = lambda t: 0*t + 1.0
+        super(WienerProcess, self).__init__(noise_variance=lambda t: 1.0,
+                                            noise_variance_prime=noise_variance_prime)
+
+
 
 # some ideas for the future
 

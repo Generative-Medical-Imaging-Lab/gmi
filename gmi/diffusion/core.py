@@ -152,19 +152,19 @@ class DiffusionBackbone(torch.nn.Module):
         self.x_0_predictor = x_0_predictor
         self.y_encoder = y_encoder
 
-    def forward(self, x: torch.Tensor, t: torch.Tensor, y=None):
+    def forward(self, x_t: torch.Tensor, t: torch.Tensor, y=None):
 
         """
         This method implements the forward pass of the diffusion backbone.
 
         """
 
-        assert isinstance(x, torch.Tensor)
+        assert isinstance(x_t, torch.Tensor)
         assert isinstance(t, torch.Tensor)
         if y is not None:
             assert isinstance(y, torch.Tensor)
         
-        x_t_embedding = self.x_t_encoder(x)
+        x_t_embedding = self.x_t_encoder(x_t)
         t_embedding = self.t_encoder(t)
         if y is not None:
             y_embedding = self.y_encoder(y)

@@ -70,13 +70,22 @@ def train(  train_loader,
             if isinstance(batch_data, torch.Tensor):
                 batch_data = batch_data.to(device)
             else:
-                batch_data = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch_data.items()}
-
+                assert isinstance(batch_data, tuple) or isinstance(batch_data, list), "Batch data must be a tensor or tuple or list"
+                batch_data_list = []
+                for batch_data_element in batch_data:
+                    if isinstance(batch_data_element, torch.Tensor):
+                        batch_data_element = batch_data_element.to(device)
+                    batch_data_list.append(batch_data_element)
+                batch_data = tuple(batch_data_list)
             # Zero gradients before each step
             optimizer.zero_grad()
             
             # Calculate loss using closure, passing in the current batch
-            loss = loss_closure(batch_data)
+            
+            if isinstance(batch_data, torch.Tensor):
+                loss = loss_closure(batch_data)
+            else:
+                loss = loss_closure(*batch_data)
             
             # Perform backpropagation
             loss.backward()
@@ -115,10 +124,22 @@ def train(  train_loader,
                     if isinstance(batch_data, torch.Tensor):
                         batch_data = batch_data.to(device)
                     else:
-                        batch_data = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in batch_data.items()}
-                    
+                        assert isinstance(batch_data, tuple) or isinstance(batch_data, list), "Batch data must be a tensor or tuple or list"
+                        batch_data_list = []
+                        for batch_data_element in batch_data:
+                            if isinstance(batch_data_element, torch.Tensor):
+                                batch_data_element = batch_data_element.to(device)
+                            batch_data_list.append(batch_data_element)
+                        batch_data = tuple(batch_data_list)
+
                     # Calculate validation loss using closure
-                    val_loss = loss_closure(batch_data)
+                    
+                    if isinstance(batch_data, torch.Tensor):
+                        val_loss = loss_closure(batch_data)
+                    else:
+                        val_loss = loss_closure(*batch_data)
+
+
                     val_batch_losses.append(val_loss.item())
             
             # Record average validation loss for the epoch
