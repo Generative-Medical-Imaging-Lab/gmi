@@ -2,16 +2,19 @@
 
 from . import linalg
 from . import samplers
-from . import distributions
+from . import distribution
 from . import sde
 from . import diffusion
-from . import networks
+from . import network
 from . import datasets
 from . import tasks
 from . import train
+from . import lr_scheduler
+from . import loss_function
 
 from .samplers import Sampler
-from .distributions import Distribution
+from .distribution import Distribution
 from .linalg import LinearOperator
-from .train import train, LossClosure
+from .train import train
+
 

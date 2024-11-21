@@ -31,7 +31,12 @@ class StochasticDifferentialEquation(nn.Module):
         self.f = f
         self.G = G
 
+        self.x_shape = None
+
     def forward(self, x, t):
+        assert isinstance(x, torch.Tensor), "x must be a tensor."
+        assert isinstance(t, torch.Tensor), "t must be a tensor."
+        self.x_shape = x.shape
         return self.f(x, t), self.G(x, t)
     
     def reverse_SDE_given_score_estimator(self, score_estimator):
@@ -95,14 +100,19 @@ class StochasticDifferentialEquation(nn.Module):
                 The output tensor.
         """
 
-        x = x
-        # t = timesteps[0]
+
+        assert isinstance(x, torch.Tensor), "x must be a tensor."
+        assert isinstance(timesteps, torch.Tensor), "timesteps must be a tensor."
+
+        self.x_shape = x.shape
 
         # if timesteps is not a tensor, make it a tensor
         if not isinstance(timesteps, torch.Tensor):
             timesteps = torch.tensor(timesteps)
     
-        t = timesteps[0].reshape(1,1).repeat(x.shape[0], 1)
+
+        t_shape = [self.x_shape[0]] + [1]*(len(self.x_shape)-1) 
+        t = timesteps[0].reshape(1).repeat(self.x_shape[0]).reshape(t_shape)  # t should be [batch_size,*x_shape]
 
         if return_all:
             x_all = [x]
@@ -110,10 +120,11 @@ class StochasticDifferentialEquation(nn.Module):
         for i in range(1, len(timesteps)):
             if verbose:
                 print(f"Sampling step {i}/{len(timesteps)-1}")
+                print(f"DEBUG: Memory usage: {torch.cuda.memory_allocated() / 1e9} GB")
             last_step = i == len(timesteps) - 1
             dt = timesteps[i] - t
-            x = self._sample_step(x, t, dt, sampler=sampler, last_step=last_step)
-            t = timesteps[i].reshape(1,1).repeat(x.shape[0], 1)
+            x = self._sample_step(x, t, dt, sampler=sampler, last_step=last_step).detach()
+            t = timesteps[i].reshape(1).repeat(self.x_shape[0]).reshape(t_shape)
 
             if return_all:
                 x_all.append(x)
@@ -269,8 +280,8 @@ class LinearSDE(StochasticDifferentialEquation):
         If H_prime and Sigma_prime are not provided, they will be computed using automatic differentiation.
         """
 
-        assert isinstance(H(0), InvertibleLinearOperator), "H(t) must return an InvertibleLinearOperator."
-        assert isinstance(Sigma(0), SymmetricLinearOperator), "Sigma(t) must return a SymmetricLinearOperator."
+        assert isinstance(H(0.0), InvertibleLinearOperator), "H(t) must return an InvertibleLinearOperator."
+        assert isinstance(Sigma(0.0), SymmetricLinearOperator), "Sigma(t) must return a SymmetricLinearOperator."
 
         self.H = H
         self.Sigma = Sigma
@@ -411,6 +422,12 @@ class LinearSDE(StochasticDifferentialEquation):
             torch.Tensor
                 The mean response at time t.
         """
+
+        assert isinstance(x0, torch.Tensor), "x0 must be a tensor."
+        assert isinstance(t, torch.Tensor), "t must be a tensor."
+
+        self.x_shape = x0.shape
+
         return self.H(t) @ x0
 
     def sample_x_t_given_x_0(self, x0, t):
@@ -427,6 +444,12 @@ class LinearSDE(StochasticDifferentialEquation):
             torch.Tensor
                 The sampled response at time t.
         """
+
+        assert isinstance(x0, torch.Tensor), "x0 must be a tensor."
+        assert isinstance(t, torch.Tensor), "t must be a tensor."
+
+        self.x_shape = x0.shape
+        
         noise = torch.randn_like(x0)
         return self.sample_x_t_given_x_0_and_noise(x0, noise, t)
 
@@ -447,6 +470,11 @@ class LinearSDE(StochasticDifferentialEquation):
             torch.Tensor
                 The sampled response at time t.
         """
+        assert isinstance(x0, torch.Tensor), "x0 must be a tensor."
+        assert isinstance(t, torch.Tensor), "t must be a tensor."
+
+        self.x_shape = x0.shape
+
         mean_response = self.mean_response_x_t_given_x_0(x0, t)
         Sigma_sqrtm = self.Sigma(t).sqrt_LinearOperator()
         return mean_response + Sigma_sqrtm @ noise 
@@ -494,19 +522,33 @@ class ScalarSDE(LinearSDE):
             noise_variance_prime: callable, optional
                 Function that returns the time derivative of noise_variance. If not provided, it will be computed automatically.
         """
-        assert isinstance(signal_scale(0), (float, torch.Tensor)), "signal_scale(t) must return a scalar."
-        assert isinstance(noise_variance(0), (float, torch.Tensor)), "noise_variance(t) must return a scalar."
+        # assert isinstance(signal_scale(0.0), (float, torch.Tensor)), "signal_scale(t) must return a scalar."
+        # assert isinstance(noise_variance(0.0), (float, torch.Tensor)), "noise_variance(t) must return a scalar."
 
-        H = lambda t: ScalarLinearOperator(signal_scale(t))
-        Sigma = lambda t: ScalarLinearOperator(noise_variance(t))
+        def expand_scalar_to_image_shape(scalar):
+
+            if isinstance(scalar, float):
+                return scalar
+
+            assert isinstance(scalar, torch.Tensor), "scalar must be a tensor or a float."
+            assert scalar.shape[0] == self.x_shape[0] or scalar.shape[0] == 1, "The batch size of scalar must be 1 or match the batch size of x."
+
+            scalar_shape = list(scalar.shape)
+            scalar_shape += [1]*(len(self.x_shape)-len(scalar_shape))
+            scalar = scalar.view(scalar_shape)
+
+            return scalar
+
+        H = lambda t: ScalarLinearOperator(expand_scalar_to_image_shape(signal_scale(t)))
+        Sigma = lambda t: ScalarLinearOperator(expand_scalar_to_image_shape(noise_variance(t)))
 
         if signal_scale_prime is None:
             signal_scale_prime = lambda t: torch.autograd.grad(signal_scale(t), t, create_graph=True)[0]
         if noise_variance_prime is None:
             noise_variance_prime = lambda t: torch.autograd.grad(noise_variance(t), t, create_graph=True)[0]
 
-        H_prime = lambda t: ScalarLinearOperator(signal_scale_prime(t))
-        Sigma_prime = lambda t: ScalarLinearOperator(noise_variance_prime(t))
+        H_prime = lambda t: ScalarLinearOperator(expand_scalar_to_image_shape(signal_scale_prime(t)))
+        Sigma_prime = lambda t: ScalarLinearOperator(expand_scalar_to_image_shape(noise_variance_prime(t)))
 
         super(ScalarSDE, self).__init__(H, Sigma, H_prime, Sigma_prime)
 
@@ -525,8 +567,8 @@ class DiagonalSDE(LinearSDE):
             noise_variance_prime: callable, optional
                 Function that returns the time derivative of noise_variance. If not provided, it will be computed automatically.
         """
-        assert isinstance(signal_scale(0), (torch.Tensor)), "signal_scale(t) must return a diagonal vector."
-        assert isinstance(noise_variance(0), (torch.Tensor)), "noise_variance(t) must return a diagonal vector."
+        assert isinstance(signal_scale(0.0), (torch.Tensor)), "signal_scale(t) must return a diagonal vector."
+        assert isinstance(noise_variance(0.0), (torch.Tensor)), "noise_variance(t) must return a diagonal vector."
 
         H = lambda t: DiagonalLinearOperator(signal_scale(t))
         Sigma = lambda t: DiagonalLinearOperator(noise_variance(t))
@@ -559,8 +601,8 @@ class FourierSDE(LinearSDE):
                 Function that returns the time derivative of noise_power_spectrum. If not provided, it will be computed automatically.
         """
 
-        assert isinstance(transfer_function(0), (torch.Tensor)), "transfer_function(t) must return a Fourier filter."
-        assert isinstance(noise_power_spectrum(0), (torch.Tensor)), "noise_power_spectrum(t) must return a Fourier filter."
+        assert isinstance(transfer_function(0.0), (torch.Tensor)), "transfer_function(t) must return a Fourier filter."
+        assert isinstance(noise_power_spectrum(0.0), (torch.Tensor)), "noise_power_spectrum(t) must return a Fourier filter."
 
         H = lambda t: FourierLinearOperator(transfer_function(t), dim)
         Sigma = lambda t: FourierLinearOperator(noise_power_spectrum(t), dim)
@@ -578,7 +620,7 @@ class FourierSDE(LinearSDE):
 
     
         
-class SongVarianceExplodingProcess(ScalarSDE):
+class SongVarianceExplodingSDE(ScalarSDE):
     def __init__(self, noise_variance, noise_variance_prime=None):
         """
         This class implements a Song variance-exploding process, which is a mean-reverting process with a variance-exploding term.
@@ -590,9 +632,9 @@ class SongVarianceExplodingProcess(ScalarSDE):
         signal_scale = lambda t: 1.0
         signal_scale_prime = lambda t: 0.0
 
-        super(SongVarianceExplodingProcess, self).__init__(signal_scale=signal_scale, noise_variance=noise_variance, signal_scale_prime=signal_scale_prime, noise_variance_prime=noise_variance_prime)
+        super(SongVarianceExplodingSDE, self).__init__(signal_scale=signal_scale, noise_variance=noise_variance, signal_scale_prime=signal_scale_prime, noise_variance_prime=noise_variance_prime)
 
-class SongVariancePreservingProcess(ScalarSDE):
+class SongVariancePreservingSDE(ScalarSDE):
     def __init__(self, beta=5.0):
         """
         This class implements a Song variance-preserving process, which is a mean-reverting process with a variance-preserving term.
@@ -610,11 +652,11 @@ class SongVariancePreservingProcess(ScalarSDE):
         noise_variance = lambda t: beta*t
         noise_variance_prime = lambda t: beta
 
-        super(SongVariancePreservingProcess, self).__init__(signal_scale=signal_scale, noise_variance=noise_variance, signal_scale_prime=signal_scale_prime, noise_variance_prime=noise_variance_prime)
+        super(SongVariancePreservingSDE, self).__init__(signal_scale=signal_scale, noise_variance=noise_variance, signal_scale_prime=signal_scale_prime, noise_variance_prime=noise_variance_prime)
 
 
 
-class WienerProcess(SongVarianceExplodingProcess):
+class WienerSDE(SongVarianceExplodingSDE):
     def __init__(self):
         """
         This class implements a Wiener process, which is a Song variance-exploding process with sigma_1 = 1.
@@ -622,7 +664,7 @@ class WienerProcess(SongVarianceExplodingProcess):
 
         noise_variance = lambda t: t
         noise_variance_prime = lambda t: 0*t + 1.0
-        super(WienerProcess, self).__init__(noise_variance=lambda t: 1.0,
+        super(WienerSDE, self).__init__(noise_variance=noise_variance,
                                             noise_variance_prime=noise_variance_prime)
 
 

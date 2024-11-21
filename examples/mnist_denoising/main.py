@@ -23,11 +23,11 @@ MNIST_Dataset_test = gmi.datasets.MNIST(
                                     images_only=True)
 
 # define the measurement simulator
-white_noise_adder = gmi.distributions.AdditiveWhiteGaussianNoise(
+white_noise_adder = gmi.distribution.AdditiveWhiteGaussianNoise(
                                                     noise_variance=0.1)
 
 # define the image reconstructor
-densenet_denoiser = gmi.networks.DenseNet(
+densenet_denoiser = gmi.network.DenseNet(
                                     input_shape=(1, 28, 28), 
                                     output_shape=(1, 28, 28), 
                                     hidden_channels_list=[1024, 1024, 1024], 

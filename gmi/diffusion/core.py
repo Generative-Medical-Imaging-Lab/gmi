@@ -51,7 +51,7 @@ class DiffusionModel(torch.nn.Module):
 
         return self.forward_SDE.sample(x_t, timesteps, sampler, return_all)
 
-    def sample_reverse_process(self, x_t, timesteps, sampler='euler', return_all=False, y=None):
+    def sample_reverse_process(self, x_t, timesteps, sampler='euler', return_all=False, y=None, verbose=False):
         """
         This method samples from the reverse SDE.
 
@@ -80,7 +80,7 @@ class DiffusionModel(torch.nn.Module):
         reverse_SDE = self.forward_SDE.reverse_SDE_given_mean_estimator(mean_estimator)
 
 
-        return reverse_SDE.sample(x_t, timesteps, sampler, return_all)
+        return reverse_SDE.sample(x_t, timesteps, sampler, return_all, verbose)
     
     def predict_x_0(self, x_t: torch.Tensor, t: torch.Tensor, y=None):
         """
@@ -115,7 +115,12 @@ class DiffusionBackbone(torch.nn.Module):
                  x_t_encoder,
                  t_encoder,
                  x_0_predictor,
-                 y_encoder=None):
+                 y_encoder=None,
+                 pass_t_to_x_0_predictor=False,
+                 c_skip=None,
+                 c_out=None,
+                 c_in=None,
+                 c_noise=None):
         
         """
         
@@ -152,6 +157,95 @@ class DiffusionBackbone(torch.nn.Module):
         self.x_0_predictor = x_0_predictor
         self.y_encoder = y_encoder
 
+        self.pass_t_to_x_0_predictor = pass_t_to_x_0_predictor
+
+
+        def expand_t_to_x_shape(t, x_shape):
+            assert isinstance(t, torch.Tensor)
+            assert t.shape[0] == x_shape[0], f"t.shape[0] = {t.shape[0]}, x_shape[0] = {x_shape[0]}"
+            t_shape = [t.shape[0]] + [1]*len(x_shape[1:])
+            t = t.reshape(t_shape)
+            return t
+
+
+
+
+        # denoising preconditioners
+
+        # if c_skip is None:
+        #     c_skip = lambda t,x_shape: 0.0
+        
+        # if c_out is None:
+        #     c_out = lambda t,x_shape: 1.0
+
+        # if c_in is None:
+        #     c_in = lambda t,x_shape: 1.0
+
+        # if c_noise is None:
+        #     c_noise = lambda t,x_shape: 0.5*torch.log(expand_t_to_x_shape(t,x_shape))
+
+
+        
+        # SGM preconditioners
+
+        # if c_skip is None:
+        #     c_skip = lambda t,x_shape: 1.0
+        
+        # if c_out is None:
+        #     c_out = lambda t,x_shape: torch.sqrt(expand_t_to_x_shape(t, x_shape))
+
+        # if c_in is None:
+        #     c_in = lambda t,x_shape: 1.0
+
+        # if c_noise is None:
+        #     c_noise = lambda t,x_shape: 0.5*torch.log(expand_t_to_x_shape(t,x_shape))
+
+
+
+
+        # EDM preconditioners
+
+        # var_data = 0.25
+
+        # if c_skip is None:
+        #     c_skip = lambda t,x_shape: var_data/(var_data + expand_t_to_x_shape(t,x_shape))
+        
+        # if c_out is None:
+        #     c_out = lambda t,x_shape: torch.sqrt(expand_t_to_x_shape(t, x_shape)) * torch.sqrt(var_data/(var_data + expand_t_to_x_shape(t,x_shape)))
+
+        # if c_in is None:
+        #     c_in = lambda t,x_shape: 1.0 / torch.sqrt(var_data + expand_t_to_x_shape(t,x_shape))
+
+        # if c_noise is None:
+        #     c_noise = lambda t,x_shape: 0.5*torch.log(expand_t_to_x_shape(t,x_shape))
+
+
+
+        # custom preconditioners
+        # testing if time dependence of previous case is the issue
+
+        # var_data = 0.25
+
+        if c_skip is None:
+            c_skip = lambda t,x_shape: 0.0
+        
+        if c_out is None:
+            c_out = lambda t,x_shape: 1.0
+
+        if c_in is None:
+            c_in = lambda t,x_shape: 1.0
+            
+        if c_noise is None:
+            c_noise = lambda t,x_shape: 1.0
+
+
+
+
+        self.c_skip = c_skip
+        self.c_out = c_out
+        self.c_in = c_in
+        self.c_noise = c_noise
+
     def forward(self, x_t: torch.Tensor, t: torch.Tensor, y=None):
 
         """
@@ -166,12 +260,41 @@ class DiffusionBackbone(torch.nn.Module):
         
         x_t_embedding = self.x_t_encoder(x_t)
         t_embedding = self.t_encoder(t)
+
         if y is not None:
-            y_embedding = self.y_encoder(y)
-            x_0_pred = self.x_0_predictor(x_t_embedding, t_embedding, y_embedding)
+                y_embedding = self.y_encoder(y)
+
+        if self.pass_t_to_x_0_predictor:
+            if y is not None:
+                x_out = self.x_0_predictor(self.c_in(t,x_t_embedding.shape)*x_t_embedding, t_embedding, y_embedding, (self.c_noise(t,t.shape)*t).squeeze())
+            else:
+                x_out = self.x_0_predictor(self.c_in(t,x_t_embedding.shape)*x_t_embedding, t_embedding, (self.c_noise(t,t.shape)*t).squeeze())
         else:
-            x_0_pred = self.x_0_predictor(x_t_embedding, t_embedding)
+            if y is not None:
+                x_out = self.x_0_predictor(self.c_in(t,x_t_embedding.shape)*x_t_embedding, t_embedding, y_embedding)
+            else:
+                x_out = self.x_0_predictor(self.c_in(t,x_t_embedding.shape)*x_t_embedding, t_embedding)
+
+
+        x_0_pred = self.c_skip(t,x_t.shape)*x_t + self.c_out(t,x_out.shape)*x_out
+
+
+
+        # if self.pass_t_to_x_0_predictor:
+        #     if y is not None:
+        #         x_out = self.x_0_predictor(x_t_embedding, t_embedding, y_embedding, t.squeeze())
+        #     else:
+        #         x_out = self.x_0_predictor(x_t_embedding, t_embedding, t.squeeze())
+        # else:
+        #     if y is not None:
+        #         x_out = self.x_0_predictor(x_t_embedding, t_embedding, y_embedding)
+        #     else:
+        #         x_out = self.x_0_predictor(x_t_embedding, t_embedding)
+
+
+        # x_0_pred = x_out
         
+
         return x_0_pred
 
 
