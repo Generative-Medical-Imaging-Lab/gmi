@@ -56,7 +56,7 @@ class DenseNet(nn.Module):
             torch.Tensor: Output tensor.
         """
         
-        assert x.shape[-len(self.input_shape):] == self.input_shape, f"Last dimensions of input tensor {x.shape} do not match the input shape {self.input_shape}"
+        assert list(x.shape[-len(self.input_shape):]) == self.input_shape, f"Last dimensions of input tensor {x.shape} do not match the input shape {self.input_shape}"
 
         batch_shape = x.shape[:-len(self.input_shape)]
         batch_size = int(torch.prod(torch.tensor(batch_shape)))

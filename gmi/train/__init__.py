@@ -75,9 +75,19 @@ def train(train_loader, loss_closure, num_epochs=10, num_iterations=100,
                 batch_data = next(train_loader_iter)
 
             # Move data to device
-            batch_data = tuple(d.to(device) if isinstance(d, torch.Tensor) else d for d in batch_data) \
-                if isinstance(batch_data, (tuple, list)) else batch_data.to(device)
+
+
+
+            # batch_data = tuple(d.to(device) if isinstance(d, torch.Tensor) else d for d in batch_data) \
+            #     if isinstance(batch_data, (tuple, list)) else batch_data.to(device)
             
+            if isinstance(batch_data, (tuple, list)):
+                
+                batch_data = tuple(d.to(device) if isinstance(d, torch.Tensor) else d for d in batch_data) \
+                    if isinstance(batch_data, (tuple, list)) else batch_data.to(device)
+            elif isinstance(batch_data, torch.Tensor):
+                batch_data = [batch_data.to(device)]
+
             optimizer.zero_grad()
             loss = loss_closure(*batch_data if isinstance(batch_data, (tuple, list)) else batch_data)
             
@@ -120,8 +130,17 @@ def train(train_loader, loss_closure, num_epochs=10, num_iterations=100,
                         val_loader_iter = iter(validation_loader)
                         batch_data = next(val_loader_iter)
 
-                    batch_data = tuple(d.to(device) if isinstance(d, torch.Tensor) else d for d in batch_data) \
-                        if isinstance(batch_data, (tuple, list)) else batch_data.to(device)
+                    # batch_data = tuple(d.to(device) if isinstance(d, torch.Tensor) else d for d in batch_data) \
+                    #     if isinstance(batch_data, (tuple, list)) else batch_data.to(device)
+                    
+                    if isinstance(batch_data, (tuple, list)):
+                        batch_data = tuple(d.to(device) if isinstance(d, torch.Tensor) else d for d in batch_data) \
+                            if isinstance(batch_data, (tuple, list)) else batch_data.to(device)
+                    elif isinstance(batch_data, torch.Tensor):
+                        batch_data = [batch_data.to(device)]
+                    
+                    
+                    
                     val_loss = loss_closure(*batch_data if isinstance(batch_data, (tuple, list)) else batch_data)
                     val_batch_losses.append(val_loss.item())
 

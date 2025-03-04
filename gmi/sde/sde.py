@@ -112,7 +112,7 @@ class StochasticDifferentialEquation(nn.Module):
     
 
         t_shape = [self.x_shape[0]] + [1]*(len(self.x_shape)-1) 
-        t = timesteps[0].reshape(1).repeat(self.x_shape[0]).reshape(t_shape)  # t should be [batch_size,*x_shape]
+        _t = timesteps[0].reshape(1).repeat(self.x_shape[0]).reshape(t_shape)  # t should be [batch_size,*x_shape]
 
         if return_all:
             x_all = [x]
@@ -122,9 +122,9 @@ class StochasticDifferentialEquation(nn.Module):
                 print(f"Sampling step {i}/{len(timesteps)-1}")
                 print(f"DEBUG: Memory usage: {torch.cuda.memory_allocated() / 1e9} GB")
             last_step = i == len(timesteps) - 1
-            dt = timesteps[i] - t
-            x = self._sample_step(x, t, dt, sampler=sampler, last_step=last_step).detach()
-            t = timesteps[i].reshape(1).repeat(self.x_shape[0]).reshape(t_shape)
+            dt = timesteps[i] - _t
+            x = self._sample_step(x, _t.view(-1), dt, sampler=sampler, last_step=last_step).detach()
+            _t = timesteps[i].reshape(1).repeat(self.x_shape[0]).reshape(t_shape)
 
             if return_all:
                 x_all.append(x)
@@ -525,30 +525,32 @@ class ScalarSDE(LinearSDE):
         # assert isinstance(signal_scale(0.0), (float, torch.Tensor)), "signal_scale(t) must return a scalar."
         # assert isinstance(noise_variance(0.0), (float, torch.Tensor)), "noise_variance(t) must return a scalar."
 
-        def expand_scalar_to_image_shape(scalar):
+        # def expand_scalar_to_image_shape(scalar):
 
-            if isinstance(scalar, float):
-                return scalar
+        #     if isinstance(scalar, float):
+        #         return scalar
 
-            assert isinstance(scalar, torch.Tensor), "scalar must be a tensor or a float."
-            assert scalar.shape[0] == self.x_shape[0] or scalar.shape[0] == 1, "The batch size of scalar must be 1 or match the batch size of x."
+        #     assert isinstance(scalar, torch.Tensor), "scalar must be a tensor or a float."
+        #     if len(scalar.shape) == 0:
+        #         scalar = scalar.view(1)
+        #     assert scalar.shape[0] == self.x_shape[0] or scalar.shape[0] == 1, "The batch size of scalar must be 1 or match the batch size of x."
 
-            scalar_shape = list(scalar.shape)
-            scalar_shape += [1]*(len(self.x_shape)-len(scalar_shape))
-            scalar = scalar.view(scalar_shape)
+        #     scalar_shape = list(scalar.shape)
+        #     scalar_shape += [1]*(len(self.x_shape)-len(scalar_shape))
+        #     scalar = scalar.view(scalar_shape)
 
-            return scalar
+        #     return scalar
 
-        H = lambda t: ScalarLinearOperator(expand_scalar_to_image_shape(signal_scale(t)))
-        Sigma = lambda t: ScalarLinearOperator(expand_scalar_to_image_shape(noise_variance(t)))
+        H = lambda t: ScalarLinearOperator(signal_scale(t))
+        Sigma = lambda t: ScalarLinearOperator(noise_variance(t))
 
         if signal_scale_prime is None:
             signal_scale_prime = lambda t: torch.autograd.grad(signal_scale(t), t, create_graph=True)[0]
         if noise_variance_prime is None:
             noise_variance_prime = lambda t: torch.autograd.grad(noise_variance(t), t, create_graph=True)[0]
 
-        H_prime = lambda t: ScalarLinearOperator(expand_scalar_to_image_shape(signal_scale_prime(t)))
-        Sigma_prime = lambda t: ScalarLinearOperator(expand_scalar_to_image_shape(noise_variance_prime(t)))
+        H_prime = lambda t: ScalarLinearOperator(signal_scale_prime(t))
+        Sigma_prime = lambda t: ScalarLinearOperator(noise_variance_prime(t))
 
         super(ScalarSDE, self).__init__(H, Sigma, H_prime, Sigma_prime)
 

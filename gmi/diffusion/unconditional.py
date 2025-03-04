@@ -1,4 +1,5 @@
 import torch
+from torch import nn
 from .sde import StochasticDifferentialEquation
 
 class UnconditionalDiffusionModel:
@@ -14,3 +15,22 @@ class UnconditionalDiffusionModel:
 
     def sample(self, x0, timesteps, sampler='euler', return_all=False):
         return self.sde.sample(x0, timesteps, sampler, return_all)
+    
+    def loss_closure(self, loss_fn):
+        class LossClosure(nn.Module):
+            def __init__(self, parent, model, loss_fn):
+                super(LossClosure, self).__init__()
+                self.parent = parent  # reference to the parent class
+                self.model = model
+                self.loss_fn = loss_fn
+
+            def forward(self, batch_data):
+                images = batch_data
+                assert isinstance(self.parent, UnconditionalDiffusionModel)
+                measurements = self.parent.sample_measurements_given_images(1, images)[0]  # reference parent method
+                reconstructions = self.parent.sample_reconstructions_given_measurements(1, measurements)[0]  # reference parent method
+                loss = self.loss_fn(reconstructions, images)
+                return loss
+                
+        return LossClosure(self, self.image_reconstructor, loss_fn) 
+

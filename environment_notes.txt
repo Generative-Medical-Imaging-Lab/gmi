@@ -1,5 +1,5 @@
-conda create --name gmi_env
-conda activate gmi_env
+conda create --name gmi
+conda activate gmi
 conda install python=3.12 pip ffmpeg
 conda install nvidia/label/cuda-12.4.1::cuda-toolkit
 pip3 install numpy scipy matplotlib pandas scikit-learn scikit-image seaborn 

@@ -464,7 +464,14 @@ class ScalarLinearOperator(SymmetricLinearOperator, InvertibleLinearOperator):
                 The result of applying the linear operator to the input tensor.
         """
 
-        return self.scalar * x
+        for i, shape in enumerate(self.scalar.shape):
+            assert x.shape[i] == shape or self.scalar.shape[i]==1, "The input tensor shape does not match the scalar shape."
+
+        target_shape = [self.scalar.shape[i] for i in range(len(self.scalar.shape))]
+        for i in range(len(x.shape) - len(self.scalar.shape)):
+            target_shape = target_shape + [1,]
+
+        return self.scalar.reshape(target_shape).to(x.device) * x
     
     def conjugate(self, x):
         """

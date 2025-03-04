@@ -6,8 +6,8 @@ import torchvision.transforms as transforms
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-medmnist_name = 'BloodMNIST'
-batch_size = 64
+medmnist_name = 'OrganAMNIST'
+batch_size = 2048
 
 medmnist_example_dir = os.path.dirname(os.path.abspath(__file__))
 
@@ -31,26 +31,26 @@ dataset_test = gmi.datasets.MedMNIST(medmnist_name,
 dataloader_train = torch.utils.data.DataLoader(dataset_train, 
                                                 batch_size=batch_size, 
                                                 shuffle=True,
-                                                num_workers=4)
+                                                num_workers=1)
 
 dataloader_val = torch.utils.data.DataLoader(dataset_val,
                                                 batch_size=batch_size,
                                                 shuffle=False,
-                                                num_workers=4)
+                                                num_workers=1)
 
 dataloader_test = torch.utils.data.DataLoader(dataset_test,
                                                 batch_size=batch_size,
                                                 shuffle=False,
-                                                num_workers=4)
+                                                num_workers=1)
 
 
 # define the measurement simulator
 white_noise_adder = gmi.distribution.AdditiveWhiteGaussianNoise(
-                                                    noise_standard_deviation=0.5)
+                                                    noise_standard_deviation=0.1)
 
-denoiser = gmi.network.SimpleCNN(input_channels=3,
-                                    output_channels=3,
-                                    hidden_channels_list=[16, 32, 16],
+denoiser = gmi.network.SimpleCNN(input_channels=1,
+                                    output_channels=1,
+                                    hidden_channels_list=[16, 32, 64, 128, 256, 128, 64, 32, 16],
                                     activation=torch.nn.SiLU(),
                                     dim=2).to(device)
 

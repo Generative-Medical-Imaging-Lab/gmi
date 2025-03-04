@@ -1,5 +1,8 @@
 import torch
+from torch import nn
 from ..sde import LinearSDE
+from ..distribution import UniformDistribution
+from ..samplers import Sampler
 
 
 class DiffusionModel(torch.nn.Module):
@@ -16,8 +19,8 @@ class DiffusionModel(torch.nn.Module):
 
         super(DiffusionModel, self).__init__()
 
-        self.diffusion_backbone = diffusion_backbone
         self.forward_SDE = forward_SDE
+        self.diffusion_backbone = diffusion_backbone
 
     def forward(self, x_0: torch.Tensor, t: torch.Tensor):
         """
@@ -107,6 +110,43 @@ class DiffusionModel(torch.nn.Module):
             x_0_pred =  self.diffusion_backbone(x_t, t, y)
 
         return x_0_pred
+    
+    def loss_closure(self, loss_fn=None, time_sampler=None):
+        if loss_fn is None:
+            loss_fn = torch.nn.MSELoss()
+
+        if time_sampler is None:
+            time_sampler = UniformDistribution(0.0, 1.0)
+
+        assert isinstance(loss_fn, torch.nn.Module)
+        assert isinstance(time_sampler, Sampler)
+
+        class LossClosure(nn.Module):
+            def __init__(self, parent, loss_fn, time_sampler):
+                super(LossClosure, self).__init__()
+                self.parent = parent  # reference to the parent class
+                self.loss_fn = loss_fn
+                self.time_sampler = time_sampler
+
+            def forward(self, batch_data):
+                if isinstance(batch_data, torch.Tensor):
+                    x_0 = batch_data
+                    y=None
+                if isinstance(batch_data, list) or isinstance(batch_data, tuple):
+                    assert len(batch_data) == 1 or len(batch_data) == 2, "batch_data should a tensor (unconditional) or a tuple/list of two elements (conditional)"
+                    x_0 = batch_data[0]
+                    y = batch_data[1]
+
+                batch_size = x_0.shape[0]
+                assert isinstance(self.parent, DiffusionModel)
+
+                t = self.time_sampler.sample(batch_size).to(x_0.device)
+                x_t = self.parent.forward_SDE.sample_x_t_given_x_0(x_0, t)
+                x_0_pred = self.parent.predict_x_0(x_t, t, y)
+                loss = self.loss_fn(x_0_pred, x_0)
+                return loss
+                
+        return LossClosure(self, loss_fn, time_sampler) 
 
 
 
@@ -237,9 +277,6 @@ class DiffusionBackbone(torch.nn.Module):
             
         if c_noise is None:
             c_noise = lambda t,x_shape: 1.0
-
-
-
 
         self.c_skip = c_skip
         self.c_out = c_out
