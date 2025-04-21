@@ -4,19 +4,67 @@ from torch_ema import ExponentialMovingAverage
 from tqdm import tqdm
 import wandb
 
+class save_best_model():
+    """A callback class that saves the model state when the validation loss improves.
+    This class implements a simple callback mechanism that tracks the best validation loss
+    and saves the model's state dictionary when a new best loss is achieved. It can also handle
+    Exponential Moving Average (EMA) if provided.
+    Args:
+        model (torch.nn.Module): The PyTorch model to be saved.
+        save_path (str): File path where the model state should be saved.
+        ema (optional, ExponentialMovingAverage): EMA instance for model parameter averaging.
+            Defaults to None.
+    Attributes:
+        model (torch.nn.Module): The model being monitored.
+        ema (ExponentialMovingAverage): EMA instance for parameter averaging.
+        save_path (str): Path where model state is saved.
+        best_loss (float): The best validation loss observed so far.
+    Example:
+        >>> model = MyModel()
+        >>> saver = save_best_model(model, 'best_model.pth')
+        >>> # During training
+        >>> val_loss = validate(model)
+        >>> saver(val_loss)
+    """
+    def __init__(self, model, save_path, ema=None):
+        self.model = model
+        self.ema = ema
+        self.save_path = save_path
+        self.best_loss = float('inf')
+
+    def __call__(self, loss):
+        if loss < self.best_loss:
+            self.best_loss = loss
+            if self.ema:
+                self.ema.store()     
+                self.ema.copy_to()   
+            torch.save(self.model.state_dict(), self.save_path)
+            if self.ema:
+                self.ema.restore()
+            print(f"This is the best val loss so far: {loss:.4f}. The model was saved!")
+
 def train(train_loader, loss_closure, num_epochs=10, num_iterations=100,
           optimizer=None, lr=1e-3, lr_scheduler=None,
           device='cuda' if torch.cuda.is_available() else 'cpu',fabric=None,
           validation_loader=None, num_iterations_val=10, verbose=True, very_verbose=False,
           early_stopping=False, patience=10, val_loss_smoothing=0.9, min_delta=1e-6, 
           use_ema=False, ema_decay=0.999, 
-          wandb_project=None, wandb_config=None):
+          wandb_project=None, wandb_config=None,
+          save_best_model_path=None):
+    
+    print("--- EXECUTING LOCAL train function with save_best_model_path ---")
+
     """
     Trains any model with an Adam optimizer using a provided loss closure, with optional early stopping, EMA, and WandB logging.
 
     Args:
         train_loader (torch.utils.data.DataLoader): DataLoader providing batches of training data.
-        loss_closure (function): A function that calculates and returns the loss, taking a batch of data as input.
+
+        loss_closure (function): A function that calculates and returns the loss, taking a batch of data as input. 
+            the parent of loss closure must have sample_x_t_given_x_0 and predict_x_0 methods. Therefore it
+            usually is defined as gmi.diffusion.DiffusionModel(forward_SDE, diffusion_backbone). The diffusion
+            backbone is stored as self.diffusion_backbone. The diffusion backbone is usually the pure U-Net.
+
         num_epochs (int): The number of epochs to train for.
         num_iterations (int): The number of iterations per epoch.
         optimizer (torch.optim.Optimizer, optional): Optimizer to use for training. If None, uses Adam.
@@ -54,6 +102,10 @@ def train(train_loader, loss_closure, num_epochs=10, num_iterations=100,
     # Initialize EMA if enabled
     ema = ExponentialMovingAverage(loss_closure.parameters(), decay=ema_decay) if use_ema else None
     
+    if (save_best_model_path is not None) and use_ema:
+        save_best = save_best_model(loss_closure.parent.diffusion_backbone, save_best_model_path, ema=ema)
+    elif save_best_model_path is not None:
+        save_best = save_best_model(loss_closure.parent.diffusion_backbone, save_best_model_path)
     # Early stopping variables
     smoothed_val_loss = None
     patience_counter = 0
@@ -149,6 +201,10 @@ def train(train_loader, loss_closure, num_epochs=10, num_iterations=100,
 
             # Record average validation loss
             val_epoch_loss = sum(val_batch_losses) / len(val_batch_losses)
+            
+            if save_best_model_path is not None:
+                save_best(val_epoch_loss)
+
             val_losses.append(val_epoch_loss)
 
             # Smooth the validation loss
