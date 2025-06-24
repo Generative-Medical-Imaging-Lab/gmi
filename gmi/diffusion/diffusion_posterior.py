@@ -1,31 +1,46 @@
 import torch
 from torch import nn
 from ..sde import LinearSDE, StandardWienerSDE
-from ..distribution import UniformDistribution
+from ..linalg import DiagonalLinearOperator
+from ..distribution import UniformDistribution, GaussianDistribution
 from ..samplers import Sampler
-from ..linalg import InvertibleLinearOperator
+from .core import DiffusionModel
 
-
-class DiffusionModel(torch.nn.Module):
+class DiffusionPosteriorModel(DiffusionModel):
     def __init__(self,
                  diffusion_backbone,
                  forward_SDE=None,
                  training_loss_fn=None,
                  training_time_sampler=None,
-                 training_time_uncertainty_sampler=None):
+                 training_time_uncertainty_sampler=None,
+                 device=None):
         """
         This is an abstract base class for diffusion models.
         """
+        torch.nn.Module.__init__(self)
 
         assert isinstance(diffusion_backbone, torch.nn.Module)
 
-        super(DiffusionModel, self).__init__()
+        if device is None:
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         if forward_SDE is None:
             forward_SDE = StandardWienerSDE()
 
         if training_loss_fn is None:
-            training_loss_fn = torch.nn.MSELoss()
+
+            class KLDivergenceTrainingLossFn(torch.nn.Module):
+                def __init__(self):
+                    super(KLDivergenceTrainingLossFn, self).__init__()
+
+                def forward(self, clean, mean_pred, logvar_pred, t):
+                    var_pred = torch.exp(logvar_pred)
+                    quad = (clean - mean_pred).pow(2) / var_pred
+                    kl = 0.5 * (quad + logvar_pred)
+                    loss = kl.mean()
+                    return loss
+                    
+            training_loss_fn = KLDivergenceTrainingLossFn().to(device)
 
         if training_time_sampler is None:
             training_time_sampler = UniformDistribution(0.0, 1.0)
@@ -40,6 +55,7 @@ class DiffusionModel(torch.nn.Module):
         assert isinstance(diffusion_backbone, torch.nn.Module)
         assert isinstance(training_time_sampler, Sampler)
         assert isinstance(training_loss_fn, torch.nn.Module)
+        assert isinstance(training_time_uncertainty_sampler, Sampler)
 
         self.diffusion_backbone = diffusion_backbone
         self.forward_SDE = forward_SDE
@@ -78,46 +94,72 @@ class DiffusionModel(torch.nn.Module):
         t = self.training_time_sampler.sample(batch_size).to(x_0.device)
         tau = self.training_time_uncertainty_sampler.sample(t).to(x_0.device)
         x_t = self.forward_SDE.sample_x_t_given_x_0(x_0, tau)
-        x_0_pred = self.predict_x_0(x_t, t, y)
-        loss = self.training_loss_fn(x_0, x_0_pred, t)
+        mean_pred, logvar_pred = self.predict_mean_and_log_var(x_t, t, y)
+        loss = self.training_loss_fn(x_0, mean_pred, logvar_pred, t)
         return loss
         
-    def sample_reverse_process(self, x_t, timesteps, sampler='euler', return_all=False, y=None, verbose=False):
+    def predict_x_0(self, x_t: torch.Tensor, t: torch.Tensor, y=None):
         """
-        This method samples from the reverse SDE.
+        This method predicts x_0 given x_t.
 
         parameters:
             x_t: torch.Tensor
-                The initial condition.
-            timesteps: int
-                The number of timesteps to sample.
-            sampler: str
-                The method used to compute the forward update. Currently, only 'euler' and 'heun' are supported.
-            return_all: bool
-                If True, the method returns all intermediate samples.
-            y: torch.Tensor
-                The conditional input to the reverse SDE.
+                The sample at time t.
+            t: float
+                The time step.
         returns:
-            x: torch.Tensor
-                The output tensor.
+            x_0: torch.Tensor
+                The predicted initial condition.
         """
-        # we assume the diffusion_backbone estimates the posterior mean of x_0 given x_t, t, and y
-        def mean_estimator(x_t, t):
-            return self.predict_x_0(x_t, t, y)
 
-        # define the reverse SDE, based on the mean estimator,
-        # Tweedies's formula to get the score function, 
-        # Anderson's formula to get the reverse SDE
-        reverse_SDE = self.forward_SDE.reverse_SDE_given_mean_estimator(mean_estimator)
+        assert isinstance(x_t, torch.Tensor)
+        assert isinstance(t, torch.Tensor)
+        if y is not None:
+            assert isinstance(y, torch.Tensor)
 
-        return reverse_SDE.sample(x_t, timesteps, sampler, return_all, verbose)
+        if y is None:
+            mean_pred, _ =  self.diffusion_backbone(x_t, t)
+        else:
+            mean_pred, _ =  self.diffusion_backbone(x_t, t, y)
+
+        return mean_pred
     
-    def sample_reverse_process_DPS(self,    
+
+    def predict_mean_and_log_var(self, x_t: torch.Tensor, t: torch.Tensor, y=None):
+        """
+        This method predicts the mean and log variance of the posterior distribution.
+
+        parameters:
+            x_t: torch.Tensor
+                The sample at time t.
+            t: float
+                The time step.
+        returns:
+            mean_pred: torch.Tensor
+                The predicted mean of the posterior distribution.
+            logvar_pred: torch.Tensor
+                The predicted log variance of the posterior distribution.
+        """
+
+        assert isinstance(x_t, torch.Tensor)
+        assert isinstance(t, torch.Tensor)
+        if y is not None:
+            assert isinstance(y, torch.Tensor)
+
+        if y is None:
+            mean_pred, logvar_pred =  self.diffusion_backbone(x_t, t)
+        else:
+            mean_pred, logvar_pred =  self.diffusion_backbone(x_t, t, y)
+
+        return mean_pred, logvar_pred
+    
+
+    def sample_reverse_process_BDPS(self,    
                                 x_t, 
                                 log_likelihood_fn, 
                                 timesteps, 
                                 likelihood_weight=1.0,
-                                jacobian_method='Backpropagation', # Backpropagation or Identity
+                                jacobian_method='Backpropagation',  # or 'Identity'
                                 sampler='euler', 
                                 return_all=False, 
                                 y=None, 
@@ -147,75 +189,55 @@ class DiffusionModel(torch.nn.Module):
                 Final output tensor.
         """
 
-        def prior_score_estimator(x_t, t, x_0):
-            Sigma_t = self.forward_SDE.Sigma(t)
-            Sigma_t_inv = Sigma_t.inverse_LinearOperator()
-            return Sigma_t_inv @ (x_0 - x_t)
+        def map_reconstructor(x_init, mu_pred, logvar_pred, lr=1e-1, n_steps=200):
+            """
+            This function reconstructs the posterior mean given the predicted mean and log variance.
+            """
 
-        def posterior_score_estimator(x_t, t):
-            x_t = x_t.detach().requires_grad_(True)
-            x_0_pred = self.predict_x_0(x_t, t, y)
-            x_0_pred.retain_grad()
+            mu_pred = mu_pred.detach()
+            logvar_pred = logvar_pred.detach()
+            prior_distribution = GaussianDistribution(mu_pred, DiagonalLinearOperator(torch.exp(logvar_pred)))
 
-            prior_score = prior_score_estimator(x_t, t, x_0_pred)
+            x_recon = x_init.detach().requires_grad_(True)
+            optimizer = torch.optim.Adam([x_recon], lr=lr)
+            for i_step in range(n_steps):
+                optimizer.zero_grad()
+                log_prior = prior_distribution.log_prob_plus_constant(x_recon)
+                log_likelihood = log_likelihood_fn(x_recon)
+                log_posterior = log_prior + likelihood_weight * log_likelihood
+                negative_log_posterior = -log_posterior
+                negative_log_posterior.backward()
+                optimizer.step()
+                # x_recon.data = x_recon.data.clamp(0.0, 1.0)
+                # print(f"Step {i_step+1}/{n_steps}, negative_log_posterior: {negative_log_posterior.item()}, negative_log_prior: {-log_prior.item()}, negative_log_likelihood: {-log_likelihood.item()}", end='\r')
+                # print(f"Step {i_step+1}/{n_steps}, negative_log_posterior: {negative_log_posterior.item()}") 
+            return x_recon
+            
+        
+        def posterior_mean_estimator(x_t, t, y=None):
+            """
+            This function estimates the posterior mean given x_t, t, and y.
+            """
 
-            # Zero any old gradients
-            if x_t.grad is not None:
-                x_t.grad.zero_()
-            if x_0_pred.grad is not None:
-                x_0_pred.grad.zero_()
-
-            if jacobian_method == 'Backpropagation':
-                log_likelihood = log_likelihood_fn(x_0_pred)
-                log_likelihood.backward()
-                if x_t.grad is None:
-                    raise RuntimeError("x_t.grad is None. Did predict_x_0 disconnect x_t from the graph?")
-                likelihood_score = x_t.grad.clone()
-            elif jacobian_method == 'Identity':
-                # Detach x_0_pred so backward does not go through predict_x_0
-                x_0_pred_detached = x_0_pred.detach().requires_grad_(True)
-                x_0_pred_detached.retain_grad()
-                log_likelihood = log_likelihood_fn(x_0_pred_detached)
-                log_likelihood.backward()
-                if x_0_pred_detached.grad is None:
-                    raise RuntimeError("x_0_pred_detached.grad is None. Check that x_0_pred_detached.requires_grad=True.")
-                likelihood_score = x_0_pred_detached.grad.clone()
+            if y is None:
+                mean_pred, logvar_pred = self.predict_mean_and_log_var(x_t, t)
             else:
-                raise ValueError(f"Unsupported jacobian_method: {jacobian_method}")
+                mean_pred, logvar_pred = self.predict_mean_and_log_var(x_t, t, y)
 
-            posterior_score = prior_score + likelihood_weight * likelihood_score
-            return posterior_score
-
-        reverse_SDE = self.forward_SDE.reverse_SDE_given_score_estimator(posterior_score_estimator)
+            # reconstruct the posterior mean
+            x_recon = map_reconstructor(mean_pred.clone(), mean_pred, logvar_pred)
+            # x_recon = mean_pred
+            return x_recon
+        
+        reverse_SDE = self.forward_SDE.reverse_SDE_given_mean_estimator(posterior_mean_estimator)
         return reverse_SDE.sample(x_t, timesteps, sampler, return_all, verbose)
 
-            
-    def predict_x_0(self, x_t: torch.Tensor, t: torch.Tensor, y=None):
-        """
-        This method predicts x_0 given x_t.
 
-        parameters:
-            x_t: torch.Tensor
-                The sample at time t.
-            t: float
-                The time step.
-        returns:
-            x_0: torch.Tensor
-                The predicted initial condition.
-        """
 
-        assert isinstance(x_t, torch.Tensor)
-        assert isinstance(t, torch.Tensor)
-        if y is not None:
-            assert isinstance(y, torch.Tensor)
 
-        if y is None:
-            x_0_pred =  self.diffusion_backbone(x_t, t)
-        else:
-            x_0_pred =  self.diffusion_backbone(x_t, t, y)
 
-        return x_0_pred
 
+    
 class DiffusionBackbone(torch.nn.Module):
     def __init__(self,
                  x_t_encoder,
@@ -248,6 +270,7 @@ class DiffusionBackbone(torch.nn.Module):
                 The optional neural network that encodes information from y.
         """
         
+
         assert isinstance(x_t_encoder, torch.nn.Module)
         assert isinstance(t_encoder, torch.nn.Module)
         assert isinstance(x_0_predictor, torch.nn.Module)
@@ -270,6 +293,8 @@ class DiffusionBackbone(torch.nn.Module):
             t_shape = [t.shape[0]] + [1]*len(x_shape[1:])
             t = t.reshape(t_shape)
             return t
+
+        # var_data = 0.25
 
         if c_skip is None:
             c_skip = lambda t,x_shape: 0.0
@@ -319,6 +344,23 @@ class DiffusionBackbone(torch.nn.Module):
 
 
         x_0_pred = self.c_skip(t,x_t.shape)*x_t + self.c_out(t,x_out.shape)*x_out
+
+
+
+        # if self.pass_t_to_x_0_predictor:
+        #     if y is not None:
+        #         x_out = self.x_0_predictor(x_t_embedding, t_embedding, y_embedding, t.squeeze())
+        #     else:
+        #         x_out = self.x_0_predictor(x_t_embedding, t_embedding, t.squeeze())
+        # else:
+        #     if y is not None:
+        #         x_out = self.x_0_predictor(x_t_embedding, t_embedding, y_embedding)
+        #     else:
+        #         x_out = self.x_0_predictor(x_t_embedding, t_embedding)
+
+
+        # x_0_pred = x_out
+        
 
         return x_0_pred
 

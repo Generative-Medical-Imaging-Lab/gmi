@@ -1,3 +1,9 @@
-from . import sde
+from . import core
+from . import scalar
+from . import diagonal
+from . import fourier
 
-from .sde import *
+from .core import *
+from .scalar import *
+from .diagonal import *
+from .fourier import *

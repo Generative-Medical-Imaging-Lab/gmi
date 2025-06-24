@@ -52,7 +52,6 @@ def train(train_loader, loss_closure, num_epochs=10, num_iterations=100,
           wandb_project=None, wandb_config=None,
           save_best_model_path=None):
     
-    print("--- EXECUTING LOCAL train function with save_best_model_path ---")
 
     """
     Trains any model with an Adam optimizer using a provided loss closure, with optional early stopping, EMA, and WandB logging.

@@ -19,7 +19,7 @@ class GaussianDistribution(Distribution):
     def sample(self):
         white_noise = torch.randn(self.mu.shape, device=self.mu.device)
         sqrt_Sigma = self.Sigma.sqrt_LinearOperator()
-        correlated_noise =  sqrt_Sigma @ white_noise
+        correlated_noise =  sqrt_Sigma(white_noise)
         return self.mu + correlated_noise
     
     def mahalanobis_distance(self, x):
@@ -34,6 +34,13 @@ class GaussianDistribution(Distribution):
         mahalanobis_distance = self.mahalanobis_distance(x)
         return 0.5 * constant_term - 0.5 * log_det - 0.5 * mahalanobis_distance
     
+    def log_prob_plus_constant(self, x):
+        mahalanobis_distance = self.mahalanobis_distance(x)
+        return  - 0.5 * mahalanobis_distance
+    
+    def score(self, x):
+        return self.Sigma.inv_LinearOperator() @ (self.mu - x)
+        
 
 
 class ConditionalGaussianDistribution(Distribution):
@@ -51,17 +58,23 @@ class ConditionalGaussianDistribution(Distribution):
     def sample(self, y, *args, **kwargs):
         return self.evaluate(y).sample(*args, **kwargs)
     
+    def mahalanobis_distance(self, y, x):
+        return self.evaluate(y).mahalanobis_distance(x)
+    
     def log_prob(self, y, x):
         return self.evaluate(y).log_prob(x)
     
-    def mahalanobis_distance(self, y, x):
-        return self.evaluate(y).mahalanobis_distance(x)
+    def log_prob_plus_constant(self, y, x):
+        return self.evaluate(y).log_prob_plus_constant(x)
+    
+    def score(self, y, x):
+        return self.evaluate(y).score(x)
     
 
 
 class LinearSystemGaussianNoise(ConditionalGaussianDistribution):
     def __init__(self, linear_system, noise_covariance):
-        mu_fn = lambda y: linear_system @ y
+        mu_fn = lambda y: linear_system(y)
         Sigma_fn = lambda y: noise_covariance
         super(LinearSystemGaussianNoise, self).__init__(mu_fn, Sigma_fn)
         self.linear_system = linear_system

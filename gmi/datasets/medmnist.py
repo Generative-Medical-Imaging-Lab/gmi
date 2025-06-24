@@ -5,6 +5,7 @@ import medmnist
 class MedMNIST( torch.utils.data.Dataset):
     def __init__(self, 
                  dataset_name, 
+                 size=28,
                  split='train', 
                  transform=transforms.Compose([transforms.ToTensor()]),
                  target_transform=None,
@@ -56,6 +57,7 @@ class MedMNIST( torch.utils.data.Dataset):
             raise ValueError('MedMNIST dataset name not recognized. Please choose from: PathMNIST, ChestMNIST, DermaMNIST, OCTMNIST, PneumoniaMNIST, RetinaMNIST, BreastMNIST, BloodMNIST, TissueMNIST, OrganAMNIST, OrganCMNIST, OrganSMNIST, OrganMNIST3D, NoduleMNIST3D, AdrenalMNIST3D, FractureMNIST3D, VesselMNIST3D, SynapseMNIST3D')
 
         self.medmnist_dataset = medmnist_dataset(
+                                size=size,
                                 split=split,
                                 transform=transform,
                                 target_transform=target_transform,

@@ -318,7 +318,7 @@ class InvertibleLinearOperator(SquareLinearOperator):
         if not hasattr(self, 'inverse_LinearOperator'):
             return self.inverse_LinearOperator().forward(y)
         else:
-            raise NotImplementedError("For InvrtibleLinearOperator, either the inverse method or the inverse_LinearOperator method must be implemented.")
+            raise NotImplementedError("For InvertibleLinearOperator, either the inverse method or the inverse_LinearOperator method must be implemented.")
     
     def inverse_LinearOperator(self):
         """
@@ -514,10 +514,13 @@ class ScalarLinearOperator(SymmetricLinearOperator, InvertibleLinearOperator):
             return ScalarLinearOperator(self.scalar * mul_scalar_matrix.scalar)
         else:
             raise ValueError("Unsupported type for matrix multiplication.")
+        
+    def logdet(self):
+        return torch.log(torch.abs(self.scalar))
     
 
 
-class DiagonalLinearOperator(SquareLinearOperator):
+class DiagonalLinearOperator(SymmetricLinearOperator, InvertibleLinearOperator):
     def __init__(self, diagonal_vector):
         """
         This class implements a diagonal linear operator.
@@ -551,29 +554,33 @@ class DiagonalLinearOperator(SquareLinearOperator):
     def conjugate(self, x):
         return torch.conj(self.diagonal_vector) * x
     
+    def inverse(self, y):
+        if torch.any(self.diagonal_vector == 0):
+            raise ValueError("The diagonal vector contains zeros, so the inverse does not exist.")
+        return y / self.diagonal_vector
+    
     def inverse_LinearOperator(self):
         if torch.any(self.diagonal_vector == 0):
             raise ValueError("The diagonal vector contains zeros, so the inverse does not exist.")
         return DiagonalLinearOperator(self.input_shape, 1/self.diagonal_vector)
     
     def sqrt_LinearOperator(self):
-        return DiagonalLinearOperator(self.input_shape, torch.sqrt(self.diagonal_vector))
+        return DiagonalLinearOperator(torch.sqrt(self.diagonal_vector))
 
     def mat_add(self, added_diagonal_matrix):
         assert isinstance(added_diagonal_matrix, (DiagonalLinearOperator)), "DiagonalLinearOperator addition only supported for DiagonalLinearOperator." 
         assert self.input_shape == added_diagonal_matrix.input_shape, "DiagonalLinearOperator addition only supported for DiagonalLinearOperator with same input shape."
-        return DiagonalLinearOperator(self.input_shape, self.diagonal_vector + added_diagonal_matrix.diagonal_vector)
+        return DiagonalLinearOperator(self.diagonal_vector + added_diagonal_matrix.diagonal_vector)
 
     def mat_sub(self, sub_diagonal_matrix):
         assert isinstance(sub_diagonal_matrix, (DiagonalLinearOperator)), "DiagonalLinearOperator subtraction only supported for DiagonalLinearOperator." 
         assert self.input_shape == sub_diagonal_matrix.input_shape, "DiagonalLinearOperator subtraction only supported for DiagonalLinearOperator with same input shape."
-        return DiagonalLinearOperator(self.input_shape, self.diagonal_vector - sub_diagonal_matrix.diagonal_vector)
+        return DiagonalLinearOperator(self.diagonal_vector - sub_diagonal_matrix.diagonal_vector)
     
     def mat_mul(self, mul_diagonal_matrix):
         assert isinstance(mul_diagonal_matrix, (DiagonalLinearOperator)), "DiagonalLinearOperator multiplication only supported for DiagonalLinearOperator." 
         assert self.input_shape == mul_diagonal_matrix.input_shape, "DiagonalLinearOperator multiplication only supported for DiagonalLinearOperator with same input shape."
-        return DiagonalLinearOperator(self.input_shape, self.diagonal_vector * mul_diagonal_matrix.diagonal_vector)
-
+        return DiagonalLinearOperator(self.diagonal_vector * mul_diagonal_matrix.diagonal_vector)
 
 class IdentityLinearOperator(RealLinearOperator, UnitaryLinearOperator, HermitianLinearOperator, SymmetricLinearOperator):
     def __init__(self):
