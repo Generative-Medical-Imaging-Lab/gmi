@@ -3,19 +3,10 @@ from torchvision import datasets, transforms
 import medmnist
 
 class MedMNIST( torch.utils.data.Dataset):
-    def __init__(self, 
+    def __init__(self,
                  dataset_name, 
-                 size=28,
-                 split='train', 
-                 transform=transforms.Compose([transforms.ToTensor()]),
-                 target_transform=None,
-                 download=True, 
-                 images_only=False):
-
-        if transform is None:
-            transform = transforms.Compose([
-                transforms.ToTensor()
-            ])
+                 images_only=True,
+                 **kwargs):
         
         if dataset_name == 'PathMNIST':
             medmnist_dataset = medmnist.PathMNIST
@@ -57,11 +48,7 @@ class MedMNIST( torch.utils.data.Dataset):
             raise ValueError('MedMNIST dataset name not recognized. Please choose from: PathMNIST, ChestMNIST, DermaMNIST, OCTMNIST, PneumoniaMNIST, RetinaMNIST, BreastMNIST, BloodMNIST, TissueMNIST, OrganAMNIST, OrganCMNIST, OrganSMNIST, OrganMNIST3D, NoduleMNIST3D, AdrenalMNIST3D, FractureMNIST3D, VesselMNIST3D, SynapseMNIST3D')
 
         self.medmnist_dataset = medmnist_dataset(
-                                size=size,
-                                split=split,
-                                transform=transform,
-                                target_transform=target_transform,
-                                download=download)
+                                **kwargs)
 
         self.images_only = images_only
 
