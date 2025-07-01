@@ -10,7 +10,7 @@ torchaudio>=2.0.0
 diffusers>=0.21.0
 transformers>=4.30.0
 accelerate>=0.20.0
-torch-ema>=0.6.0
+torch-ema>=0.3.0
 
 # Medical imaging libraries
 nibabel>=4.0.0
@@ -27,6 +27,7 @@ tqdm>=4.64.0
 wandb>=0.13.0
 datasets>=2.10.0
 PyYAML>=6.0
+click>=8.0.0
 
 # Medical datasets
 medmnist>=1.0.0 

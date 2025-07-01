@@ -1,0 +1,19 @@
+services:
+  gmi:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gmi-container
+    volumes:
+      - .:/gmi_base
+    working_dir: /gmi_base
+    environment:
+      - PYTHONPATH=/gmi_base
+    # Enable GPU support if available
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu] 

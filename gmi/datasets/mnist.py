@@ -1,4 +1,3 @@
-
 import torch
 from torchvision import datasets, transforms
 
@@ -23,13 +22,23 @@ class MNIST( torch.utils.data.Dataset):
         self.images_only = images_only
 
     def __getitem__(self, index):
-        # if its a slice, convert it to a list of indices
+        # Handle single index (most common case)
+        if isinstance(index, int):
+            data, target = self.dataset[index]
+            if self.images_only:
+                # Ensure single sample has [channel, height, width] format
+                if data.dim() == 2:
+                    data = data.unsqueeze(0)  # Add channel dimension
+                return data
+            else:
+                return data, target
+        
+        # Handle slice, convert it to a list of indices
         if isinstance(index, slice):
             index = list(range(*index.indices(len(self.dataset))))
-        if isinstance(index, int):
-            index = [index]
-        if isinstance(index, torch.Tensor):
+        elif isinstance(index, torch.Tensor):
             index = index.to(torch.int64).tolist()
+            
         if isinstance(index, list):
             data_list = []
             target_list = []

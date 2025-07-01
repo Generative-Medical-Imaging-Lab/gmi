@@ -9,8 +9,13 @@ setup(
     url='https://github.com/Generative-Medical-Imaging-Lab/gmi',
     packages=find_packages(),
     install_requires=[
-        # List your dependencies here, e.g., 'numpy', 'scipy'
+        # Dependencies are managed in requirements.txt
     ],
+    entry_points={
+        'console_scripts': [
+            'gmi=main:cli',
+        ],
+    },
     classifiers=[
         'Programming Language :: Python :: 3',
         'License :: OSI Approved :: MIT License',

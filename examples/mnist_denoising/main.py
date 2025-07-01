@@ -1,63 +1,86 @@
-
-
+from functools import partial
 import torch
 import gmi
-
-
 import os
-mnist_denoising_dir = os.path.dirname(os.path.abspath(__file__))
+import torchvision.transforms as transforms
+from matplotlib import pyplot as plt
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+batch_size = 512
 
+mnist_denoising_dir = os.path.dirname(os.path.abspath(__file__))
 
-# define the dataset
-MNIST_Dataset_train = gmi.datasets.MNIST(
-                                    train=True, 
-                                    download=True,
-                                    images_only=True)
+# Create the datasets with proper transforms
+transform = transforms.Compose([
+    transforms.ToTensor()
+])
 
-MNIST_Dataset_test = gmi.datasets.MNIST(
-                                    train=False, 
-                                    download=True,
-                                    images_only=True)
+dataset_train = gmi.datasets.MNIST(train=True, 
+                                   download=True, 
+                                   images_only=True,
+                                   transform=transform)
+
+dataset_val = gmi.datasets.MNIST(train=False,
+                                 download=True,
+                                 images_only=True,
+                                 transform=transform)
+
+dataset_test = gmi.datasets.MNIST(train=False,
+                                  download=True,
+                                  images_only=True,
+                                  transform=transform)
+
+dataloader_train = torch.utils.data.DataLoader(dataset_train, 
+                                                batch_size=batch_size, 
+                                                shuffle=True,
+                                                num_workers=1)
+
+dataloader_val = torch.utils.data.DataLoader(dataset_val,
+                                                batch_size=batch_size,
+                                                shuffle=False,
+                                                num_workers=1)
+
+dataloader_test = torch.utils.data.DataLoader(dataset_test,
+                                                batch_size=batch_size,
+                                                shuffle=False,
+                                                num_workers=1)
 
 # define the measurement simulator
 white_noise_adder = gmi.distribution.AdditiveWhiteGaussianNoise(
-                                                    noise_variance=0.1)
+                                                    noise_standard_deviation=0.316)
 
-# define the image reconstructor
-densenet_denoiser = gmi.network.DenseNet(
-                                    input_shape=(1, 28, 28), 
-                                    output_shape=(1, 28, 28), 
-                                    hidden_channels_list=[1024, 1024, 1024], 
-                                    activation=torch.nn.SiLU()).to(device)
+denoiser = gmi.network.SimpleCNN(input_channels=1,
+                                    output_channels=1,
+                                    hidden_channels_list=[16, 32, 64, 128, 256, 128, 64, 32, 16],
+                                    activation=torch.nn.SiLU(),
+                                    dim=2).to(device)
 
 # define the denoising task
 mnist_denoising_task = gmi.tasks.ImageReconstructionTask(
-                                        image_dataset = MNIST_Dataset_train,
+                                        image_dataset = dataset_train,
                                         measurement_simulator = white_noise_adder,
-                                        image_reconstructor = densenet_denoiser,
-                                        task_evaluator = 'rmse',
+                                        image_reconstructor = denoiser,
                                         device=device)
 
-# train the denoiser
-batch_size = 128
-mnist_denoising_task.train_reconstructor(
-                                    batch_size, 
-                                    num_epochs=100, 
-                                    num_iterations=100, 
-                                    verbose=True)
+loss_closure = mnist_denoising_task.loss_closure(torch.nn.MSELoss())
 
+# train the denoiser
+gmi.train(  dataloader_train, 
+            loss_closure, 
+            num_epochs=20, 
+            num_iterations=100,
+            optimizer=None,
+            lr=1e-3, 
+            device=device, 
+            validation_loader=dataloader_val, 
+            num_iterations_val=10,
+            verbose=True)
 
 images, measurements, reconstructions = mnist_denoising_task.sample_images_measurements_reconstructions(
                                     image_batch_size=9,
                                     measurement_batch_size=9,
                                     reconstruction_batch_size=9)
-
-
-
-from matplotlib import pyplot as plt
 
 images = images.cpu().detach().numpy()
 measurements = measurements.cpu().detach().numpy()
@@ -66,23 +89,26 @@ reconstructions = reconstructions.cpu().detach().numpy()
 fig = plt.figure(figsize=(10, 10))
 for i in range(9):
     ax = fig.add_subplot(3, 3, i + 1)
-    ax.imshow(images[0,0,i][0], cmap='gray', vmin=0, vmax=1)
+    ax.imshow(images[0,0,i].transpose(1,2,0), cmap='gray', vmin=0, vmax=1)
     ax.axis('off')
 plt.savefig(mnist_denoising_dir + '/images.png')
 
 fig = plt.figure(figsize=(10, 10))
 for i in range(9):
     ax = fig.add_subplot(3, 3, i + 1)
-    ax.imshow(measurements[0,0,i][0], cmap='gray', vmin=0, vmax=1)
+    ax.imshow(measurements[0,0,i].transpose(1,2,0), cmap='gray', vmin=0, vmax=1)
     ax.axis('off')
 plt.savefig(mnist_denoising_dir + '/measurements.png')
 
 fig = plt.figure(figsize=(10, 10))
 for i in range(9):
     ax = fig.add_subplot(3, 3, i + 1)
-    ax.imshow(reconstructions[0,0,i][0], cmap='gray', vmin=0, vmax=1)
+    ax.imshow(reconstructions[0,0,i].transpose(1,2,0), cmap='gray', vmin=0, vmax=1)
     ax.axis('off')
 plt.savefig(mnist_denoising_dir + '/reconstructions.png')
+
+print(f"Results saved to {mnist_denoising_dir}")
+print("Generated files: images.png, measurements.png, reconstructions.png")
 
 
 
