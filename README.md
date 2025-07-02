@@ -439,7 +439,5 @@ For questions and support:
 - Check the examples directory for usage patterns
 - Review the test files for implementation details
 
----
 
-**For AI Agents**: This package provides a complete framework for medical image reconstruction and generation tasks. The `gmi_data/` directory structure is automatically created and managed by the package. Use Docker for consistent environments, and start with the visualization script to download all datasets. The training framework supports various architectures and can be extended with custom components through YAML configuration files.
 
