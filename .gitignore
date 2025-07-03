@@ -162,14 +162,14 @@ cython_debug/
 #.idea/
 
 
-# this is here while copying some things over from the old repo
-laboratory
+# # this is here while copying some things over from the old repo
+# laboratory
 
-# Large dataset folders
-gmi_data/datasets/MNIST/
-gmi_data/datasets/MedMNIST/
-gmi_data/models/
-gmi_data/outputs/
+# # Large dataset folders
+# gmi_data/datasets/MNIST/
+# gmi_data/datasets/MedMNIST/
+# gmi_data/models/
+# gmi_data/outputs/
 
 # WandB logs
 wandb/
