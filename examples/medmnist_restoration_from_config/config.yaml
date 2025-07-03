@@ -1,0 +1,93 @@
+# Image Reconstruction Training Configuration
+# This file demonstrates how to configure an ImageReconstructionTask using YAML
+
+# Experiment configuration
+experiment_name: "bloodmnist_denoising"
+
+# Dataset configuration
+dataset:
+  class: gmi.datasets.MedMNIST
+  params:
+    dataset_name: "BloodMNIST"  # Use BloodMNIST for denoising
+    size: 64
+    split: "train"
+    images_only: true
+
+# Measurement simulator (simulates the forward process)
+# Must be a conditional distribution that inherits from ConditionalGaussianDistribution
+measurement_simulator:
+  class: gmi.distribution.gaussian.AdditiveWhiteGaussianNoise
+  params:
+    noise_standard_deviation: 0.1
+
+# Image reconstructor (learns to reconstruct from measurements)
+image_reconstructor:
+  class: gmi.network.SimpleCNN
+  params:
+    input_channels: 3
+    output_channels: 3 
+    hidden_channels_list: [16, 32, 64, 32, 16]
+    activation: "silu"  # Options: relu, silu, tanh, sigmoid
+    dim: 2
+
+# Training configuration
+training:
+  # Basic training parameters
+  num_epochs: 100
+  num_iterations_train: 100  # iterations per epoch
+  learning_rate: 0.001
+  device: "cuda"  # or "cpu"
+  
+  # DataLoader parameters (used when datasets are provided)
+  batch_size: 32
+  num_workers: 1
+  shuffle_train: true
+  shuffle_val: false
+  shuffle_test: false
+  
+  # Advanced training features
+  use_ema: true
+  ema_decay: 0.999
+  early_stopping: true
+  patience: 10
+  val_loss_smoothing: 0.9
+  min_delta: 1e-6
+  
+  # Validation and test parameters
+  num_iterations_val: 10
+  num_iterations_test: 1
+  
+  # Final evaluation parameters
+  final_test_iterations: 100
+  
+  # Test plotting parameters
+  test_plot_vmin: 0
+  test_plot_vmax: 1
+  test_save_plots: true
+  
+  # Logging and monitoring
+  verbose: true
+  very_verbose: false
+  wandb_project: "gmi-bloodmnist-denoiser"  # Set to null to disable WandB
+  wandb_config: null  # Additional WandB config
+  
+  # Model saving
+  save_checkpoints: true
+
+# Validation dataset configuration
+validation_dataset:
+  class: gmi.datasets.MedMNIST
+  params:
+    dataset_name: "BloodMNIST"  # Use BloodMNIST for validation
+    size: 64
+    split: "val"  # Use validation split
+    images_only: true
+
+# Test dataset configuration
+test_dataset:
+  class: gmi.datasets.MedMNIST
+  params:
+    dataset_name: "BloodMNIST"  # Use BloodMNIST for testing
+    size: 64
+    split: "test"  # Use test split
+    images_only: true 

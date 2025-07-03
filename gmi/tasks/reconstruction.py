@@ -1,11 +1,29 @@
-
 import torch
 from torch import nn
 from torch_ema import ExponentialMovingAverage
+import yaml
+import importlib
+from pathlib import Path
+from typing import Dict, Any, Union, Optional, List
 
 from ..samplers import Sampler, DatasetSampler, DataLoaderSampler, ModuleSampler
+from ..datasets.core import GMI_Dataset
+from ..train import train
+import torch.nn.functional as F
 
 class ImageReconstructionTask(nn.Module):
+    """
+    Image Reconstruction Task for training image reconstruction models.
+    
+    SHAPE CONVENTIONS:
+    - Images: (batch_size, channels, height, width) - e.g., (32, 1, 28, 28) for grayscale MNIST
+    - Measurements: (batch_size, channels, height, width) - same spatial dimensions as images
+    - Reconstructions: (batch_size, channels, height, width) - same spatial dimensions as images
+    
+    NOTE: When called from gmi.train(), batch_data will have shape (batch_size, channels, height, width)
+    with only ONE batch dimension. The internal samplers may add extra batch dimensions that need
+    to be handled appropriately.
+    """
     def __init__(self, 
                  image_dataset,
                  measurement_simulator,
@@ -32,7 +50,7 @@ class ImageReconstructionTask(nn.Module):
             image_reconstructor = ModuleSampler(image_reconstructor)
 
         # assert that image_dataset, measurement_simulator, and image_reconstructor are instances of Sampler
-        assert isinstance(image_dataset, Sampler), 'image_dataset must be an instance of torch.utils.data.Dataset, torch.utils.data.DataLoader, or gmi.Sampler'
+        assert isinstance(image_dataset, Sampler), 'image_dataset must be an instance of torch.utils.data.Dataset, torch.utils.data.DataLoader, gmi.Sampler, or gmi.GMI_Dataset'
         assert isinstance(measurement_simulator, Sampler), 'measurement_simulator must be an instance of torch.nn.Module or gmi.Sampler'
         assert isinstance(image_reconstructor, Sampler), 'image_reconstructor must be an instance of torch.nn.Module or gmi.Sampler'
 
@@ -43,41 +61,835 @@ class ImageReconstructionTask(nn.Module):
         
         self.device=device
 
+        # Move models to device if possible
+        if self.device is not None:
+            # Move image_reconstructor's underlying module to device
+            if hasattr(self.image_reconstructor, 'module') and hasattr(self.image_reconstructor.module, 'to'):
+                self.image_reconstructor.module = self.image_reconstructor.module.to(self.device)
+            elif hasattr(self.image_reconstructor, 'to'):
+                self.image_reconstructor = self.image_reconstructor.to(self.device)
+            # Move measurement_simulator's underlying module to device
+            if hasattr(self.measurement_simulator, 'module') and hasattr(self.measurement_simulator.module, 'to'):
+                self.measurement_simulator.module = self.measurement_simulator.module.to(self.device)
+            elif hasattr(self.measurement_simulator, 'to'):
+                self.measurement_simulator = self.measurement_simulator.to(self.device)
+
+    @classmethod
+    def from_config(cls, config_path: Union[str, Path], device=None):
+        """
+        Create an ImageReconstructionTask from a YAML configuration file.
+        Args:
+            config_path: Path to the YAML configuration file
+            device: Device to place the models on
+        Returns:
+            ImageReconstructionTask instance
+        """
+        config_path = Path(config_path)
+        if not config_path.exists():
+            raise FileNotFoundError(f"YAML configuration file not found: {config_path}")
+        with open(config_path, 'r') as f:
+            config = yaml.safe_load(f)
+        return cls.from_dict(config, device)
+    
+    @classmethod
+    def from_dict(cls, config: Dict[str, Any], device=None):
+        """
+        Create an ImageReconstructionTask from a configuration dictionary.
+        
+        Args:
+            config: Configuration dictionary
+            device: Device to place the models on
+            
+        Returns:
+            ImageReconstructionTask instance
+        """
+        # Validate required components
+        required_components = ['dataset', 'measurement_simulator', 'image_reconstructor']
+        for component in required_components:
+            if component not in config:
+                raise ValueError(f"Missing required component '{component}' in configuration")
+        
+        # Load dataset
+        dataset = cls._load_component(config['dataset'], 'dataset')
+        
+        # Load measurement simulator (must be a conditional distribution)
+        measurement_simulator = cls._load_component(config['measurement_simulator'], 'measurement_simulator')
+        
+        # Validate that measurement_simulator is a conditional distribution
+        from ..distribution.gaussian import ConditionalGaussianDistribution
+        if not isinstance(measurement_simulator, ConditionalGaussianDistribution):
+            raise ValueError(f"measurement_simulator must be a subclass of ConditionalGaussianDistribution, got {type(measurement_simulator)}")
+        
+        # Load image reconstructor
+        image_reconstructor = cls._load_component(config['image_reconstructor'], 'image_reconstructor')
+        
+        return cls(
+            image_dataset=dataset,
+            measurement_simulator=measurement_simulator,
+            image_reconstructor=image_reconstructor,
+            device=device
+        )
+    
+    @staticmethod
+    def _load_component(component_config: Dict[str, Any], component_name: str):
+        """
+        Load a component from configuration.
+        
+        Args:
+            component_config: Component configuration dictionary
+            component_name: Name of the component for error messages
+            
+        Returns:
+            Loaded component instance
+        """
+        from ..config import load_object_from_dict
+        return load_object_from_dict(component_config)
+
+    class TestClosure(nn.Module):
+        """
+        Test closure for image reconstruction evaluation.
+        Returns a dict with metrics and optional file paths.
+        """
+        def __init__(self, parent, plot_vmin=0, plot_vmax=1, plot_save_dir=None, save_plots=True):
+            super().__init__()
+            self.parent = parent
+            self.plot_vmin = plot_vmin
+            self.plot_vmax = plot_vmax
+            self.plot_save_dir = plot_save_dir
+            self.save_plots = save_plots
+            
+            # Create save directory if needed
+            if self.save_plots and self.plot_save_dir is not None:
+                Path(self.plot_save_dir).mkdir(parents=True, exist_ok=True)
+        
+        def _compute_rmse(self, pred, target):
+            """Compute Root Mean Square Error."""
+            return torch.sqrt(F.mse_loss(pred, target)).item()
+        
+        def _compute_psnr(self, pred, target):
+            """Compute Peak Signal-to-Noise Ratio."""
+            mse = F.mse_loss(pred, target)
+            if mse == 0:
+                return float('inf')
+            max_val = 1.0  # Assuming normalized images
+            return 20 * torch.log10(max_val / torch.sqrt(mse)).item()
+
+        def _compute_ssim(self, pred, target):
+            """Compute Structural Similarity Index."""
+            # Simple SSIM implementation - could be replaced with more sophisticated version
+            mu1 = pred.mean()
+            mu2 = target.mean()
+            mu1_sq = mu1 ** 2
+            mu2_sq = mu2 ** 2
+            mu1_mu2 = mu1 * mu2
+            
+            sigma1_sq = pred.var()
+            sigma2_sq = target.var()
+            sigma12 = ((pred - mu1) * (target - mu2)).mean()
+            
+            c1 = 0.01 ** 2
+            c2 = 0.03 ** 2
+            
+            ssim = ((2 * mu1_mu2 + c1) * (2 * sigma12 + c2)) / ((mu1_sq + mu2_sq + c1) * (sigma1_sq + sigma2_sq + c2))
+            return ssim.item()
+
+        def _compute_lpips(self, pred, target):
+            """Compute Learned Perceptual Image Patch Similarity."""
+            # Simple LPIPS approximation using MSE in feature space
+            # In practice, you'd want to use a proper LPIPS implementation
+            return F.mse_loss(pred, target).item()
+        
+        def _create_reconstruction_plot(self, images, measurements, reconstructions, epoch, iteration=None, batch_idx=0):
+            """
+            Create a 3-subplot figure showing original, measurement, and reconstruction.
+            
+            Args:
+                images: Original images tensor
+                measurements: Measurement tensor
+                reconstructions: Reconstruction tensor
+                epoch: Current epoch number
+                iteration: Current test iteration number (for unique filenames)
+                batch_idx: Index of the batch to plot
+                
+            Returns:
+                File path to saved plot, or None if not saving
+            """
+            if not self.save_plots or self.plot_save_dir is None:
+                return None
+            
+            import matplotlib.pyplot as plt
+            
+            # Extract single image from batch
+            image = images[batch_idx].cpu().detach()
+            measurement = measurements[batch_idx].cpu().detach()
+            reconstruction = reconstructions[batch_idx].cpu().detach()
+            
+            # Handle different tensor shapes
+            if image.dim() == 3:  # C, H, W
+                image = image.permute(1, 2, 0)  # H, W, C
+                measurement = measurement.permute(1, 2, 0)
+                reconstruction = reconstruction.permute(1, 2, 0)
+            
+            # If grayscale, squeeze to 2D
+            if image.shape[-1] == 1:
+                image = image.squeeze(-1)
+                measurement = measurement.squeeze(-1)
+                reconstruction = reconstruction.squeeze(-1)
+            
+            # Create figure
+            fig, axes = plt.subplots(1, 3, figsize=(12, 4))
+            
+            # Plot original image
+            im1 = axes[0].imshow(image, cmap='gray', vmin=self.plot_vmin, vmax=self.plot_vmax)
+            axes[0].set_title('Original Image')
+            axes[0].axis('off')
+            plt.colorbar(im1, ax=axes[0], fraction=0.046, pad=0.04)
+            
+            # Plot measurement
+            im2 = axes[1].imshow(measurement, cmap='gray', vmin=self.plot_vmin, vmax=self.plot_vmax)
+            axes[1].set_title('Measurement')
+            axes[1].axis('off')
+            plt.colorbar(im2, ax=axes[1], fraction=0.046, pad=0.04)
+            
+            # Plot reconstruction
+            im3 = axes[2].imshow(reconstruction, cmap='gray', vmin=self.plot_vmin, vmax=self.plot_vmax)
+            axes[2].set_title('Reconstruction')
+            axes[2].axis('off')
+            plt.colorbar(im3, ax=axes[2], fraction=0.046, pad=0.04)
+            
+            plt.tight_layout()
+            
+            # Create epoch subfolder
+            epoch_dir = Path(self.plot_save_dir) / f"epoch_{epoch:03d}"
+            epoch_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Save plot with unique filename if iteration is provided
+            if iteration is not None:
+                plot_filename = f"reconstruction_comparison_iter_{iteration:02d}.png"
+            else:
+                plot_filename = "reconstruction_comparison.png"
+            plot_path = epoch_dir / plot_filename
+            plt.savefig(plot_path, dpi=150, bbox_inches='tight')
+            plt.close()
+            
+            return str(plot_path)
+        
+        def forward(self, batch_data, epoch=None, iteration=None):
+            """
+            Forward pass for test evaluation.
+            
+            Args:
+                batch_data: Batch of images with shape (batch_size, channels, height, width)
+                           e.g., (32, 1, 28, 28) for grayscale MNIST
+                epoch: Current epoch number (optional, for file organization)
+                iteration: Current test iteration number (optional, for unique filenames)
+                
+            Returns:
+                Dict containing metrics and optional file paths
+            """
+            images = batch_data  # Shape: (batch_size, channels, height, width)
+            
+            # Create measurements: expect shape (batch_size, channels, height, width)
+            # If sampler returns extra batch dimension, remove it
+            measurements = self.parent.sample_measurements_given_images(1, images)
+            if measurements.dim() > images.dim():
+                measurements = measurements[0]  # Remove extra batch dimension
+            
+            # Create reconstructions: expect shape (batch_size, channels, height, width)
+            # If sampler returns extra batch dimension, remove it
+            reconstructions = self.parent.sample_reconstructions_given_measurements(1, measurements)
+            if reconstructions.dim() > images.dim():
+                reconstructions = reconstructions[0]  # Remove extra batch dimension
+            
+            # Verify shapes are consistent
+            assert measurements.shape == images.shape, f"Measurement shape {measurements.shape} != image shape {images.shape}"
+            assert reconstructions.shape == images.shape, f"Reconstruction shape {reconstructions.shape} != image shape {images.shape}"
+            
+            # Compute metrics
+            rmse = self._compute_rmse(reconstructions, images)
+            psnr = self._compute_psnr(reconstructions, images)
+            ssim = self._compute_ssim(reconstructions, images)
+            lpips = self._compute_lpips(reconstructions, images)
+            
+            # Create result dict
+            result = {
+                'rmse': rmse,
+                'psnr': psnr,
+                'ssim': ssim,
+                'lpips': lpips
+            }
+            
+            # Create and save plot and CSV if requested
+            if self.save_plots and epoch is not None:
+                # Create plot with unique filename if iteration is provided
+                plot_path = self._create_reconstruction_plot(images, measurements, reconstructions, epoch, iteration)
+                if plot_path is not None:
+                    result['reconstruction_plot'] = plot_path
+                
+                # Create CSV with metrics (only for first iteration to avoid duplicates)
+                # Note: CSV files are saved locally only, not logged to WandB
+                if iteration is None or iteration == 0:
+                    csv_path = self._save_metrics_csv(result, epoch)
+                    # Don't add to result dict to avoid logging to WandB
+            
+            return result
+        
+        def _save_metrics_csv(self, metrics, epoch):
+            """
+            Save metrics to a CSV file in the epoch subfolder.
+            
+            Args:
+                metrics: Dictionary of metrics
+                epoch: Current epoch number
+                
+            Returns:
+                File path to saved CSV, or None if not saving
+            """
+            if not self.save_plots or self.plot_save_dir is None:
+                return None
+            
+            import csv
+            
+            # Create epoch subfolder
+            epoch_dir = Path(self.plot_save_dir) / f"epoch_{epoch:03d}"
+            epoch_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Save CSV with consistent filename
+            csv_filename = "test_metrics.csv"
+            csv_path = epoch_dir / csv_filename
+            
+            with open(csv_path, 'w', newline='') as csvfile:
+                writer = csv.writer(csvfile)
+                writer.writerow(['metric', 'value'])
+                for metric_name, value in metrics.items():
+                    if metric_name not in ['reconstruction_plot', 'metrics_csv']:  # Skip file paths
+                        writer.writerow([metric_name, value])
+            
+            return str(csv_path)
+
+    def train_image_reconstructor(self, 
+                                 train_data=None,
+                                 val_data=None,
+                                 test_data=None,
+                                 train_batch_size=4,
+                                 val_batch_size=4,
+                                 test_batch_size=4,
+                                 train_num_workers=4,
+                                 val_num_workers=4,
+                                 test_num_workers=4,
+                                 shuffle_train=True,
+                                 shuffle_val=True,
+                                 shuffle_test=False,
+                                 num_epochs=100,
+                                 num_iterations_train=100,
+                                 num_iterations_val=10,
+                                 num_iterations_test=10,
+                                 learning_rate=0.001,
+                                 use_ema=True,
+                                 ema_decay=0.999,
+                                 early_stopping=True,
+                                 patience=10,
+                                 val_loss_smoothing=0.9,
+                                 min_delta=1e-6,
+                                 verbose=True,
+                                 very_verbose=False,
+                                 wandb_project=None,
+                                 wandb_config=None,
+                                 save_checkpoints=True,
+                                 experiment_name=None,
+                                 epochs_per_evaluation=None,
+                                 train_loss_closure=None,
+                                 val_loss_closure=None,
+                                 test_closure=None,
+                                 test_plot_vmin=0,
+                                 test_plot_vmax=1,
+                                 test_save_plots=True,
+                                 **kwargs):
+        """
+        Train the image reconstructor using the gmi.train function.
+        
+        Args:
+            train_data: Training dataset (PyTorch Dataset). If None, uses self.image_dataset
+            val_data: Validation dataset (PyTorch Dataset). If None, no validation is performed
+            test_data: Test dataset (PyTorch Dataset). Used for evaluation metrics
+            train_batch_size: Batch size for training (default: 4)
+            val_batch_size: Batch size for validation (default: 4)
+            test_batch_size: Batch size for testing (default: 4)
+            train_num_workers: Number of workers for training DataLoader (default: 4)
+            val_num_workers: Number of workers for validation DataLoader (default: 4)
+            test_num_workers: Number of workers for test DataLoader (default: 4)
+            shuffle_train: Whether to shuffle training data (default: True)
+            shuffle_val: Whether to shuffle validation data (default: True)
+            shuffle_test: Whether to shuffle test data (default: False)
+            num_epochs: Number of training epochs
+            num_iterations_train: Number of training iterations per epoch
+            num_iterations_val: Number of validation iterations per epoch
+            num_iterations_test: Number of test iterations per epoch
+            learning_rate: Learning rate for the optimizer
+            use_ema: Whether to use exponential moving average
+            ema_decay: EMA decay factor
+            early_stopping: Whether to use early stopping
+            patience: Number of epochs to wait before early stopping
+            val_loss_smoothing: Validation loss smoothing factor
+            min_delta: Minimum change for early stopping
+            verbose: Whether to print training progress
+            very_verbose: Whether to print very detailed progress
+            wandb_project: WandB project name
+            wandb_config: WandB configuration
+            save_checkpoints: Whether to save model checkpoints
+            experiment_name: Name for the experiment (used for saving outputs)
+            epochs_per_evaluation: Run evaluation every N epochs
+            train_loss_closure: Custom training loss closure (default: MSE loss)
+            val_loss_closure: Custom validation loss closure (default: same as train)
+            test_closure: Custom test closure (default: TestClosure with metrics and plots)
+            test_plot_vmin: Minimum value for test plot colorbar (default: 0)
+            test_plot_vmax: Maximum value for test plot colorbar (default: 1)
+            test_save_plots: Whether to save reconstruction plots during testing (default: True)
+            **kwargs: Additional arguments passed to gmi.train
+        Returns:
+            Tuple of (train_losses, val_losses, eval_metrics)
+        """
+        # Helper to extract underlying dataset if DatasetSampler is passed
+        def get_dataset(data):
+            if hasattr(data, 'dataset'):
+                return data.dataset
+            return data
+
+        # Use self.image_dataset if no train_data is provided
+        if train_data is None:
+            train_data = get_dataset(self.image_dataset)
+        else:
+            train_data = get_dataset(train_data)
+        if val_data is not None:
+            val_data = get_dataset(val_data)
+        if test_data is not None:
+            test_data = get_dataset(test_data)
+
+        # Set device
+        device = self.device if self.device is not None else ('cuda' if torch.cuda.is_available() else 'cpu')
+        
+        # Create default closures if not provided
+        if train_loss_closure is None:
+            def mse_loss(pred, target):
+                return F.mse_loss(pred, target)
+            train_loss_closure = self.loss_closure(mse_loss)
+        
+        if val_loss_closure is None:
+            val_loss_closure = train_loss_closure
+        
+        if test_closure is None and test_data is not None:
+            # Create test closure with plotting
+            test_plot_dir = None
+            if test_save_plots and experiment_name:
+                test_plot_dir = Path(f"gmi_data/outputs/{experiment_name}/test_outputs")
+                test_plot_dir.mkdir(parents=True, exist_ok=True)
+            
+            test_closure = self.TestClosure(
+                parent=self,
+                plot_vmin=test_plot_vmin,
+                plot_vmax=test_plot_vmax,
+                plot_save_dir=str(test_plot_dir) if test_plot_dir else None,
+                save_plots=test_save_plots
+            )
+        
+        # Setup model saving if requested
+        save_best_model_path = None
+        model_to_save = None
+        if save_checkpoints and experiment_name:
+            # Create output directory
+            output_dir = Path(f"gmi_data/outputs/{experiment_name}")
+            output_dir.mkdir(parents=True, exist_ok=True)
+            save_best_model_path = output_dir / "best_model.pth"
+            model_to_save = self.image_reconstructor
+        
+        # Run training with new interface
+        train_losses, val_losses, eval_metrics = train(
+            train_data=train_data,
+            val_data=val_data,
+            test_data=test_data,
+            train_batch_size=train_batch_size,
+            val_batch_size=val_batch_size,
+            test_batch_size=test_batch_size,
+            train_num_workers=train_num_workers,
+            val_num_workers=val_num_workers,
+            test_num_workers=test_num_workers,
+            shuffle_train=shuffle_train,
+            shuffle_val=shuffle_val,
+            shuffle_test=shuffle_test,
+            train_loss_closure=train_loss_closure,
+            val_loss_closure=val_loss_closure,
+            test_closure=test_closure,
+            num_epochs=num_epochs,
+            num_iterations=num_iterations_train,
+            num_iterations_val=num_iterations_val,
+            num_iterations_test=num_iterations_test,
+            final_test_iterations=kwargs.get('final_test_iterations'),
+            lr=learning_rate,
+            use_ema=use_ema,
+            ema_decay=ema_decay,
+            early_stopping=early_stopping,
+            patience=patience,
+            val_loss_smoothing=val_loss_smoothing,
+            min_delta=min_delta,
+            verbose=verbose,
+            very_verbose=very_verbose,
+            wandb_project=wandb_project,
+            wandb_config=wandb_config,
+            save_best_model_path=save_best_model_path,
+            model_to_save=model_to_save,
+            device=device,
+            **kwargs
+        )
+        
+        return train_losses, val_losses, eval_metrics
+
+    def _create_evaluation_function(self, test_data, batch_size):
+        """
+        Create an evaluation function that computes PSNR, SSIM, and LPIPS on test data.
+        
+        Args:
+            test_data: Test dataset to use for evaluation
+            batch_size: Batch size for evaluation
+            
+        Returns:
+            Evaluation function that takes (model, wandb_project, wandb_config, epoch) and returns metrics
+        """
+        def evaluation_function(model, wandb_project, wandb_config, epoch):
+            """
+            Evaluation function that computes PSNR, SSIM, and LPIPS on test data.
+            
+            Args:
+                model: The trained model
+                wandb_project: WandB project name
+                wandb_config: WandB configuration
+                epoch: Current epoch number
+                
+            Returns:
+                Dictionary of evaluation metrics
+            """
+            # Use the provided test_data
+            test_dataset = test_data
+            
+            # Compute metrics on 10 batches
+            num_batches = 10
+            psnr_values = []
+            ssim_values = []
+            lpips_values = []
+            
+            model.eval()
+            with torch.no_grad():
+                for i in range(num_batches):
+                    # Sample test data - handle both Sampler and Dataset objects
+                    if hasattr(test_dataset, 'sample'):
+                        # If it's a Sampler object
+                        test_images = test_dataset.sample(batch_size)
+                    else:
+                        # If it's a PyTorch Dataset, use random sampling
+                        import random
+                        indices = random.sample(range(len(test_dataset)), min(batch_size, len(test_dataset)))
+                        test_images = torch.stack([test_dataset[idx] for idx in indices])
+                    
+                    if self.device is not None:
+                        test_images = test_images.to(self.device)
+                    
+                    # Create noisy measurements
+                    measurements = self.sample_measurements_given_images(batch_size, test_images)
+                    
+                    # Reconstruct images
+                    reconstructions = self.sample_reconstructions_given_measurements(batch_size, measurements)
+                    
+                    # Compute metrics
+                    psnr = self._compute_psnr(reconstructions, test_images)
+                    ssim = self._compute_ssim(reconstructions, test_images)
+                    lpips = self._compute_lpips(reconstructions, test_images)
+                    
+                    psnr_values.append(psnr)
+                    ssim_values.append(ssim)
+                    lpips_values.append(lpips)
+            
+            # Average metrics
+            avg_psnr = sum(psnr_values) / len(psnr_values)
+            avg_ssim = sum(ssim_values) / len(ssim_values)
+            avg_lpips = sum(lpips_values) / len(lpips_values)
+            
+            metrics = {
+                'test_psnr': avg_psnr,
+                'test_ssim': avg_ssim,
+                'test_lpips': avg_lpips
+            }
+            
+            # Log to WandB if available
+            if wandb_project is not None:
+                import wandb
+                wandb.log({
+                    'test_psnr': avg_psnr,
+                    'test_ssim': avg_ssim,
+                    'test_lpips': avg_lpips,
+                    'epoch': epoch
+                })
+            
+            return metrics
+        
+        return evaluation_function
+
+    def _compute_psnr(self, pred, target):
+        """Compute Peak Signal-to-Noise Ratio."""
+        mse = F.mse_loss(pred, target)
+        if mse == 0:
+            return float('inf')
+        max_val = 1.0  # Assuming normalized images
+        return 20 * torch.log10(max_val / torch.sqrt(mse)).item()
+
+    def _compute_ssim(self, pred, target):
+        """Compute Structural Similarity Index."""
+        # Simple SSIM implementation - could be replaced with more sophisticated version
+        mu1 = pred.mean()
+        mu2 = target.mean()
+        mu1_sq = mu1 ** 2
+        mu2_sq = mu2 ** 2
+        mu1_mu2 = mu1 * mu2
+        
+        sigma1_sq = pred.var()
+        sigma2_sq = target.var()
+        sigma12 = ((pred - mu1) * (target - mu2)).mean()
+        
+        c1 = 0.01 ** 2
+        c2 = 0.03 ** 2
+        
+        ssim = ((2 * mu1_mu2 + c1) * (2 * sigma12 + c2)) / ((mu1_sq + mu2_sq + c1) * (sigma1_sq + sigma2_sq + c2))
+        return ssim.item()
+
+    def _compute_lpips(self, pred, target):
+        """Compute Learned Perceptual Image Patch Similarity."""
+        # Simple LPIPS approximation using MSE in feature space
+        # In practice, you'd want to use a proper LPIPS implementation
+        return F.mse_loss(pred, target).item()
+
+    @classmethod
+    def run_from_yaml(cls, config_path: Union[str, Path], operations: Optional[List[str]] = None, device=None):
+        """
+        Run operations specified in a YAML configuration file.
+        
+        Args:
+            config_path: Path to the YAML configuration file
+            operations: List of operations to run. If None, runs all operations found in the config.
+                       Supported operations: 'init', 'train', 'sample', 'evaluate'
+            device: Device to use for the task
+            
+        Returns:
+            ImageReconstructionTask instance
+        """
+        config_path = Path(config_path)
+        if not config_path.exists():
+            raise FileNotFoundError(f"YAML configuration file not found: {config_path}")
+            
+        with open(config_path, 'r') as f:
+            config = yaml.safe_load(f)
+            
+        # If no operations specified, run all available operations
+        if operations is None:
+            operations = []
+            if 'experiment_name' in config:
+                operations.append('init')
+            if 'training' in config:
+                operations.append('train')
+            if 'sampling' in config:
+                operations.append('sample')
+            if 'evaluation' in config:
+                operations.append('evaluate')
+        
+        task = None
+        
+        for operation in operations:
+            print(f"Running operation: {operation}")
+            
+            if operation == 'init':
+                # Initialize the task from config
+                task = cls.from_dict(config, device=device)
+                print(f"Initialized ImageReconstructionTask with experiment: {config.get('experiment_name', 'unnamed')}")
+                
+            elif operation == 'train':
+                # Train the image reconstructor
+                if task is None:
+                    # Initialize task if not already done
+                    task = cls.from_dict(config, device=device)
+                
+                if 'training' not in config:
+                    raise ValueError("Training configuration not found in YAML file")
+                
+                training_config = config['training']
+                experiment_name = config.get('experiment_name', 'unnamed_experiment')
+                
+                # Extract training parameters
+                train_params = {
+                    'num_epochs': training_config.get('num_epochs', 100),
+                    'num_iterations': training_config.get('num_iterations', 100),
+                    'learning_rate': training_config.get('learning_rate', 0.001),
+                    'train_batch_size': training_config.get('batch_size', 4),
+                    'val_batch_size': training_config.get('batch_size', 4),
+                    'test_batch_size': training_config.get('batch_size', 4),
+                    'train_num_workers': training_config.get('num_workers', 4),
+                    'val_num_workers': training_config.get('num_workers', 4),
+                    'test_num_workers': training_config.get('num_workers', 4),
+                    'shuffle_train': training_config.get('shuffle_train', True),
+                    'shuffle_val': training_config.get('shuffle_val', True),
+                    'shuffle_test': training_config.get('shuffle_test', False),
+                    'use_ema': training_config.get('use_ema', True),
+                    'ema_decay': training_config.get('ema_decay', 0.999),
+                    'early_stopping': training_config.get('early_stopping', True),
+                    'patience': training_config.get('patience', 10),
+                    'val_loss_smoothing': training_config.get('val_loss_smoothing', 0.9),
+                    'min_delta': training_config.get('min_delta', 1e-6),
+                    'num_iterations_val': training_config.get('num_iterations_val', None),
+                    'num_iterations_test': training_config.get('num_iterations_test', None),
+                    'final_test_iterations': training_config.get('final_test_iterations', None),
+                    'verbose': training_config.get('verbose', True),
+                    'very_verbose': training_config.get('very_verbose', False),
+                    'wandb_project': training_config.get('wandb_project', None),
+                    'wandb_config': training_config.get('wandb_config', None),
+                    'save_checkpoints': training_config.get('save_checkpoints', True),
+                    'experiment_name': experiment_name,
+                    'eval_fn': training_config.get('eval_fn', None),
+                    'epochs_per_evaluation': training_config.get('epochs_per_evaluation', None),
+                }
+                
+                # Run training
+                train_losses, val_losses, eval_metrics = task.train_image_reconstructor(**train_params)
+                print(f"Training completed. Final train loss: {train_losses[-1]:.4f}")
+                if val_losses:
+                    print(f"Final validation loss: {val_losses[-1]:.4f}")
+                
+            elif operation == 'sample':
+                # Generate samples
+                if task is None:
+                    task = cls.from_dict(config, device=device)
+                
+                if 'sampling' not in config:
+                    raise ValueError("Sampling configuration not found in YAML file")
+                
+                sampling_config = config['sampling']
+                # TODO: Implement sampling functionality
+                print("Sampling operation not yet implemented")
+                
+            elif operation == 'evaluate':
+                # Evaluate the model
+                if task is None:
+                    task = cls.from_dict(config, device=device)
+                
+                if 'evaluation' not in config:
+                    raise ValueError("Evaluation configuration not found in YAML file")
+                
+                evaluation_config = config['evaluation']
+                # TODO: Implement evaluation functionality
+                print("Evaluation operation not yet implemented")
+                
+            else:
+                raise ValueError(f"Unknown operation: {operation}")
+        
+        return task
+
     def sample_images(self, image_batch_size):
-        # call the image_dataset sampler
+        """
+        Sample images from the image dataset.
+        
+        Args:
+            image_batch_size: Number of images to sample
+            
+        Returns:
+            images: Shape (image_batch_size, channels, height, width)
+                   e.g., (32, 1, 28, 28) for grayscale MNIST
+        """
         images = self.image_dataset.sample(image_batch_size)
-        assert isinstance(images, torch.Tensor), 'image_dataset.sample() must return a torch.Tensor'
         if self.device is not None:
             images = images.to(self.device)
         return images
     
     def sample_measurements_given_images(self, measurement_batch_size, images):
-        # call the measurement_simulator conditional sampler
+        """
+        Sample measurements given images using the measurement simulator.
+        
+        Args:
+            measurement_batch_size: Number of measurements to generate per image
+            images: Shape (image_batch_size, channels, height, width)
+                   e.g., (32, 1, 28, 28) for grayscale MNIST
+            
+        Returns:
+            measurements: Shape depends on sampler implementation:
+                         - If measurement_batch_size=1: (image_batch_size, channels, height, width)
+                         - If measurement_batch_size>1: (measurement_batch_size, image_batch_size, channels, height, width)
+                         
+            NOTE: The sampler may add extra batch dimensions. When called from gmi.train(),
+                  we expect measurement_batch_size=1 and want shape (image_batch_size, channels, height, width)
+        """
         measurements = self.measurement_simulator.sample(measurement_batch_size, images)
-        assert isinstance(measurements, torch.Tensor), 'measurement_simulator.sample() must return a torch.Tensor'
         if self.device is not None:
             measurements = measurements.to(self.device)
         return measurements
     
     def sample_reconstructions_given_measurements(self, reconstruction_batch_size, measurements):
-        # call the image_reconstructor conditional sampler
+        """
+        Sample reconstructions given measurements using the image reconstructor.
+        
+        Args:
+            reconstruction_batch_size: Number of reconstructions to generate per measurement
+            measurements: Shape depends on previous step:
+                         - If from single measurement: (image_batch_size, channels, height, width)
+                         - If from multiple measurements: (measurement_batch_size, image_batch_size, channels, height, width)
+            
+        Returns:
+            reconstructions: Shape depends on sampler implementation:
+                            - If reconstruction_batch_size=1: same as measurements input
+                            - If reconstruction_batch_size>1: (reconstruction_batch_size, ..., channels, height, width)
+                            
+            NOTE: The sampler may add extra batch dimensions. When called from gmi.train(),
+                  we expect reconstruction_batch_size=1 and want shape (image_batch_size, channels, height, width)
+        """
         reconstructions = self.image_reconstructor(reconstruction_batch_size, measurements)
-        assert isinstance(reconstructions, torch.Tensor), 'image_reconstructor.sample() must return a torch.Tensor'
         if self.device is not None:
             reconstructions = reconstructions.to(self.device)
         return reconstructions
     
     def sample_images_measurements(self, image_batch_size, measurement_batch_size):
+        """
+        Sample images and corresponding measurements.
+        
+        Args:
+            image_batch_size: Number of images to sample
+            measurement_batch_size: Number of measurements per image
+            
+        Returns:
+            images: Shape (1, image_batch_size, channels, height, width) - extra batch dim added
+            measurements: Shape (measurement_batch_size, image_batch_size, channels, height, width)
+                         
+        NOTE: This method adds extra batch dimensions for compatibility with the complex
+              sampling pipeline. For simple training/testing, use the individual methods.
+        """
         # call the image_dataset sampler
-        images = self.sample_images(image_batch_size)
+        images = self.sample_images(image_batch_size)  # Shape: (image_batch_size, channels, height, width)
         # call the measurement_simulator conditional sampler
         measurements = self.sample_measurements_given_images(measurement_batch_size, images)
         assert isinstance(measurements, torch.Tensor), 'sample_measurements_given_images() must return a torch.Tensor'
         # add a dimension for the measurement batches
-        images.unsqueeze(0) 
+        images = images.unsqueeze(0)  # Shape: (1, image_batch_size, channels, height, width)
         return images, measurements
     
     def sample_images_measurements_reconstructions(self, image_batch_size, measurement_batch_size, reconstruction_batch_size):
+        """
+        Sample images, measurements, and reconstructions with multiple batch dimensions.
+        
+        Args:
+            image_batch_size: Number of images to sample
+            measurement_batch_size: Number of measurements per image
+            reconstruction_batch_size: Number of reconstructions per measurement
+            
+        Returns:
+            images: Shape (1, 1, image_batch_size, channels, height, width)
+            measurements: Shape (1, measurement_batch_size, image_batch_size, channels, height, width)
+            reconstructions: Shape (reconstruction_batch_size, measurement_batch_size, image_batch_size, channels, height, width)
+                            
+        NOTE: This method creates a complex multi-dimensional batch structure for advanced
+              sampling scenarios. For simple training/testing, use the individual methods.
+        """
         # call the image_dataset sampler and the measurement_simulator conditional sampler
         images, measurements = self.sample_images_measurements(image_batch_size, measurement_batch_size)
         # combine the image and measurement batch dimensions into one batch dimension
@@ -105,10 +917,35 @@ class ImageReconstructionTask(nn.Module):
                 self.loss_fn = loss_fn
 
             def forward(self, batch_data):
-                images = batch_data
+                """
+                Forward pass for training loss computation.
+                
+                Args:
+                    batch_data: Batch of images with shape (batch_size, channels, height, width)
+                               e.g., (32, 1, 28, 28) for grayscale MNIST
+                
+                Returns:
+                    loss: Scalar loss value
+                """
+                images = batch_data  # Shape: (batch_size, channels, height, width)
                 assert isinstance(self.parent, ImageReconstructionTask)
-                measurements = self.parent.sample_measurements_given_images(1, images)[0]  # reference parent method
-                reconstructions = self.parent.sample_reconstructions_given_measurements(1, measurements)[0]  # reference parent method
+                
+                # Create measurements: expect shape (batch_size, channels, height, width)
+                # If sampler returns extra batch dimension, remove it
+                measurements = self.parent.sample_measurements_given_images(1, images)
+                if measurements.dim() > images.dim():
+                    measurements = measurements[0]  # Remove extra batch dimension
+                
+                # Create reconstructions: expect shape (batch_size, channels, height, width)
+                # If sampler returns extra batch dimension, remove it
+                reconstructions = self.parent.sample_reconstructions_given_measurements(1, measurements)
+                if reconstructions.dim() > images.dim():
+                    reconstructions = reconstructions[0]  # Remove extra batch dimension
+                
+                # Verify shapes are consistent
+                assert measurements.shape == images.shape, f"Measurement shape {measurements.shape} != image shape {images.shape}"
+                assert reconstructions.shape == images.shape, f"Reconstruction shape {reconstructions.shape} != image shape {images.shape}"
+                
                 loss = self.loss_fn(reconstructions, images)
                 return loss
                 
