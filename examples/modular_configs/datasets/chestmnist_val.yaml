@@ -1,0 +1,8 @@
+# ChestMNIST validation dataset
+validation_dataset:
+  class: gmi.datasets.MedMNIST
+  params:
+    dataset_name: "ChestMNIST"
+    size: 28
+    split: "val"
+    images_only: true 

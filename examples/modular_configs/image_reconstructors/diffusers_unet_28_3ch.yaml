@@ -1,0 +1,10 @@
+# Diffusers UNet (complex) - 3 channels, 28x28 optimized
+diffusers_unet_28_3ch:
+  class: gmi.network.DiffusersUnet2D_Size28
+  params:
+    in_channels: 3
+    out_channels: 3
+    layers_per_block: 2
+    block_out_channels: [32, 64, 64]
+    down_block_types: ["DownBlock2D", "AttnDownBlock2D", "DownBlock2D"]
+    up_block_types: ["UpBlock2D", "AttnUpBlock2D", "UpBlock2D"] 

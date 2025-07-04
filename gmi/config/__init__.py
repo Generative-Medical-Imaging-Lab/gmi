@@ -6,7 +6,7 @@ Provides tools to instantiate Python objects from YAML/dict configurations.
 import yaml
 import importlib
 from pathlib import Path
-from typing import Dict, Any, Union, Type, TypeVar
+from typing import Dict, Any, Union, Type, TypeVar, List
 
 T = TypeVar('T')
 
@@ -136,4 +136,78 @@ def load_components_from_yaml(config_path: Union[str, Path], component_types: Di
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
     
-    return load_components_from_dict(config, component_types) 
+    return load_components_from_dict(config, component_types)
+
+def merge_configs(configs: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Merge multiple configuration dictionaries.
+    
+    Args:
+        configs: List of configuration dictionaries to merge
+        
+    Returns:
+        Merged configuration dictionary
+        
+    Raises:
+        ValueError: If there are duplicate keys across configs
+    """
+    merged = {}
+    seen_keys = set()
+    
+    for config in configs:
+        if not isinstance(config, dict):
+            raise ValueError(f"All configs must be dictionaries, got {type(config)}")
+        
+        for key, value in config.items():
+            if key in seen_keys:
+                raise ValueError(f"Duplicate key '{key}' found in config files. This creates ambiguity.")
+            seen_keys.add(key)
+            merged[key] = value
+    
+    return merged
+
+def load_and_merge_configs(config_paths: List[Union[str, Path]]) -> Dict[str, Any]:
+    """
+    Load and merge multiple YAML configuration files.
+    
+    Args:
+        config_paths: List of paths to YAML configuration files
+        
+    Returns:
+        Merged configuration dictionary
+        
+    Raises:
+        FileNotFoundError: If any config file is not found
+        ValueError: If there are duplicate keys across configs
+    """
+    configs = []
+    
+    for config_path in config_paths:
+        config_path = Path(config_path)
+        if not config_path.exists():
+            raise FileNotFoundError(f"Configuration file not found: {config_path}")
+        
+        with open(config_path, 'r') as f:
+            config = yaml.safe_load(f)
+        
+        if config is None:
+            config = {}
+        
+        configs.append(config)
+    
+    return merge_configs(configs)
+
+def load_components_from_multiple_configs(config_paths: List[Union[str, Path]], 
+                                        component_types: Dict[str, type] | None = None) -> Dict[str, Any]:
+    """
+    Load components from multiple YAML configuration files.
+    
+    Args:
+        config_paths: List of paths to YAML configuration files
+        component_types: Optional dict mapping component names to expected types
+        
+    Returns:
+        Dictionary of instantiated components
+    """
+    merged_config = load_and_merge_configs(config_paths)
+    return load_components_from_dict(merged_config, component_types) 

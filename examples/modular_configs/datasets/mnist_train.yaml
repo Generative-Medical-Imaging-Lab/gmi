@@ -1,0 +1,6 @@
+# MNIST training dataset
+train_dataset:
+  class: gmi.datasets.MNIST
+  params:
+    train: true
+    images_only: true 

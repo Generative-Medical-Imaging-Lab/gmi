@@ -1,0 +1,8 @@
+# BloodMNIST validation dataset
+validation_dataset:
+  class: gmi.datasets.MedMNIST
+  params:
+    dataset_name: "BloodMNIST"
+    size: 28
+    split: "val"
+    images_only: true 

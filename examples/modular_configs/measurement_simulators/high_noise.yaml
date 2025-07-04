@@ -1,0 +1,5 @@
+# High noise simulator
+high_noise:
+  class: gmi.distribution.gaussian.AdditiveWhiteGaussianNoise
+  params:
+    noise_standard_deviation: 0.25 

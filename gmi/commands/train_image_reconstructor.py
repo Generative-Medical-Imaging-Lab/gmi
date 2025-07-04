@@ -2,65 +2,148 @@
 Command for training image reconstruction models from YAML configuration.
 """
 
-import click
 import yaml
 import torch
+import argparse
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, List, Union, Optional
 
 from ..tasks.reconstruction import ImageReconstructionTask
-from ..config import load_components_from_dict
+from ..config import load_components_from_dict, load_and_merge_configs, load_object_from_dict
 
 
-def train_image_reconstructor(config_path: str, device: str = None, experiment_name: str = None):
+def train_image_reconstructor_from_configs(config_paths: List[Union[str, Path]], 
+                                         device: Optional[str] = None, 
+                                         experiment_name: Optional[str] = None,
+                                         train_dataset_path: Optional[str] = None,
+                                         validation_dataset_path: Optional[str] = None,
+                                         test_dataset_path: Optional[str] = None,
+                                         measurement_simulator_path: Optional[str] = None,
+                                         image_reconstructor_path: Optional[str] = None):
     """
-    Train an image reconstruction model from YAML configuration.
+    Train an image reconstruction model from multiple YAML configuration files.
+    
+    Args:
+        config_paths: List of paths to YAML configuration files
+        device: Device to use (default: auto-detect)
+        experiment_name: Override experiment name
+        train_dataset_path: Optional path to override train dataset config
+        validation_dataset_path: Optional path to override validation dataset config
+        test_dataset_path: Optional path to override test dataset config
+        measurement_simulator_path: Optional path to override measurement simulator config
+        image_reconstructor_path: Optional path to override image reconstructor config
+        
+    Returns:
+        Tuple of (train_losses, val_losses, eval_metrics)
+    """
+    # Load and merge all config files
+    config_dict = load_and_merge_configs(config_paths)
+    
+    # Override components with specific config files if provided
+    if train_dataset_path:
+        train_config = load_and_merge_configs([train_dataset_path])
+        # Map the component name to the standard key
+        for key, value in train_config.items():
+            if 'train_dataset' in key or 'dataset' in key:
+                config_dict['train_dataset'] = value
+                break
+    
+    if validation_dataset_path:
+        val_config = load_and_merge_configs([validation_dataset_path])
+        for key, value in val_config.items():
+            if 'validation_dataset' in key:
+                config_dict['validation_dataset'] = value
+                break
+    
+    if test_dataset_path:
+        test_config = load_and_merge_configs([test_dataset_path])
+        for key, value in test_config.items():
+            if 'test_dataset' in key:
+                config_dict['test_dataset'] = value
+                break
+    
+    if measurement_simulator_path:
+        sim_config = load_and_merge_configs([measurement_simulator_path])
+        for key, value in sim_config.items():
+            if 'measurement_simulator' in key or 'noise' in key:
+                config_dict['measurement_simulator'] = value
+                break
+    
+    if image_reconstructor_path:
+        recon_config = load_and_merge_configs([image_reconstructor_path])
+        for key, value in recon_config.items():
+            if 'image_reconstructor' in key or 'linear_conv' in key or 'unet' in key or 'cnn' in key:
+                config_dict['image_reconstructor'] = value
+                break
+    
+    return _train_from_config_dict(config_dict, device, experiment_name)
+
+
+def train_image_reconstructor(config_path: str, device: Optional[str] = None, experiment_name: Optional[str] = None):
+    """
+    Train an image reconstruction model from a single YAML configuration file.
     
     Args:
         config_path: Path to YAML configuration file
         device: Device to use (default: auto-detect)
         experiment_name: Override experiment name
+        
+    Returns:
+        Tuple of (train_losses, val_losses, eval_metrics)
     """
     # Load full YAML config
     with open(config_path, 'r') as f:
         config_dict = yaml.safe_load(f)
     
-    # Only keep component keys
-    component_keys = ['dataset', 'measurement_simulator', 'image_reconstructor']
-    components_config = {k: v for k, v in config_dict.items() if k in component_keys}
+    return _train_from_config_dict(config_dict, device, experiment_name)
+
+
+def _train_from_config_dict(config_dict: Dict[str, Any], device: Optional[str] = None, experiment_name: Optional[str] = None):
+    """
+    Internal function to train from a configuration dictionary.
     
-    # Load components
-    components = load_components_from_dict(components_config)
+    Args:
+        config_dict: Configuration dictionary
+        device: Device to use (default: auto-detect)
+        experiment_name: Override experiment name
+        
+    Returns:
+        Tuple of (train_losses, val_losses, eval_metrics)
+    """
+    # Extract components using the new naming convention
+    train_dataset = config_dict.get('train_dataset')
+    validation_dataset = config_dict.get('validation_dataset')
+    test_dataset = config_dict.get('test_dataset')
+    measurement_simulator = config_dict.get('measurement_simulator')
+    image_reconstructor = config_dict.get('image_reconstructor')
     
-    # Extract components
-    dataset = components.get('dataset')
-    measurement_simulator = components.get('measurement_simulator')
-    image_reconstructor = components.get('image_reconstructor')
+    # Load components if they are config dictionaries
+    if isinstance(train_dataset, dict):
+        train_dataset = load_object_from_dict(train_dataset)
+    if isinstance(validation_dataset, dict):
+        validation_dataset = load_object_from_dict(validation_dataset)
+    if isinstance(test_dataset, dict):
+        test_dataset = load_object_from_dict(test_dataset)
+    if isinstance(measurement_simulator, dict):
+        measurement_simulator = load_object_from_dict(measurement_simulator)
+    if isinstance(image_reconstructor, dict):
+        image_reconstructor = load_object_from_dict(image_reconstructor)
     
-    # Load validation dataset if specified
-    validation_dataset = None
-    if 'validation_dataset' in config_dict:
-        validation_config = {k: v for k, v in config_dict.items() if k == 'validation_dataset'}
-        validation_components = load_components_from_dict(validation_config)
-        validation_dataset = validation_components.get('validation_dataset')
+    # Use train_dataset as the main dataset
+    dataset = train_dataset
     
-    # Load test dataset if specified
-    test_dataset = None
-    if 'test_dataset' in config_dict:
-        test_config = {k: v for k, v in config_dict.items() if k == 'test_dataset'}
-        test_components = load_components_from_dict(test_config)
-        test_dataset = test_components.get('test_dataset')
+    # Validation and test datasets are already loaded above
     
     if not all([dataset, measurement_simulator, image_reconstructor]):
-        raise click.UsageError("Configuration must contain 'dataset', 'measurement_simulator', and 'image_reconstructor'")
+        raise ValueError("Configuration must contain 'dataset', 'measurement_simulator', and 'image_reconstructor'")
     
     # Set device
     if device is None:
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
     
-    click.echo(f"Using device: {device}")
+    print(f"Using device: {device}")
     if device == 'cuda':
-        click.echo(f"GPU: {torch.cuda.get_device_name(0)}")
+        print(f"GPU: {torch.cuda.get_device_name(0)}")
     
     # Create task
     task = ImageReconstructionTask(
@@ -74,7 +157,17 @@ def train_image_reconstructor(config_path: str, device: str = None, experiment_n
     if experiment_name is None:
         experiment_name = config_dict.get('experiment_name', 'unnamed_experiment')
     
-    click.echo(f"Starting training for experiment: {experiment_name}")
+    print(f"Starting training for experiment: {experiment_name}")
+    
+    # Save the final combined config to the experiment directory
+    experiment_dir = Path(f"gmi_data/outputs/{experiment_name}")
+    experiment_dir.mkdir(parents=True, exist_ok=True)
+    
+    config_save_path = experiment_dir / "final_config.yaml"
+    with open(config_save_path, 'w') as f:
+        yaml.dump(config_dict, f, default_flow_style=False, indent=2)
+    
+    print(f"Saved final configuration to: {config_save_path}")
     
     # Extract training configuration
     training_config = config_dict.get('training', {})
@@ -114,9 +207,9 @@ def train_image_reconstructor(config_path: str, device: str = None, experiment_n
         test_save_plots=training_config.get('test_save_plots', True)
     )
     
-    click.echo(f"Training completed!")
-    click.echo(f"Final train loss: {train_losses[-1]:.4f}")
+    print(f"Training completed!")
+    print(f"Final train loss: {train_losses[-1]:.4f}")
     if val_losses:
-        click.echo(f"Final validation loss: {val_losses[-1]:.4f}")
+        print(f"Final validation loss: {val_losses[-1]:.4f}")
     
     return train_losses, val_losses, eval_metrics 

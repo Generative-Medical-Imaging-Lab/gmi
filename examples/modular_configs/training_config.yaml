@@ -1,0 +1,77 @@
+# Training configuration for modular experiments
+# Optimized for fast training of 27 studies (3x3x3)
+
+# Default components (can be overridden by command line arguments)
+train_dataset:
+  class: gmi.datasets.MNIST
+  params:
+    train: true
+    images_only: true
+
+validation_dataset:
+  class: gmi.datasets.MNIST
+  params:
+    train: false  # Use test split for validation
+    images_only: true
+
+test_dataset:
+  class: gmi.datasets.MNIST
+  params:
+    train: false  # Use test split for test
+    images_only: true
+
+measurement_simulator:
+  class: gmi.distribution.gaussian.AdditiveWhiteGaussianNoise
+  params:
+    noise_standard_deviation: 0.05
+
+image_reconstructor:
+  class: gmi.network.LinearConv
+  params:
+    in_channels: 1
+    out_channels: 1
+    kernel_size: 7
+
+# Training parameters
+training:
+  # Fast training for multiple experiments
+  num_epochs: 2  # Reduced for speed
+  num_iterations_train: 50  # Reduced for speed
+  learning_rate: 0.001
+  device: "cuda"  # or "cpu"
+  
+  # DataLoader parameters
+  batch_size: 16  # Smaller for memory efficiency
+  num_workers: 2
+  shuffle_train: true
+  shuffle_val: false
+  shuffle_test: false
+  
+  # Advanced training features
+  use_ema: true
+  ema_decay: 0.999
+  early_stopping: true
+  patience: 5  # Reduced for speed
+  val_loss_smoothing: 0.9
+  min_delta: 1e-6
+  
+  # Validation and test parameters
+  num_iterations_val: 10
+  num_iterations_test: 5  # Reduced for speed
+  
+  # Final evaluation parameters
+  final_test_iterations: 20  # Reduced for speed
+  
+  # Test plotting parameters
+  test_plot_vmin: 0
+  test_plot_vmax: 1
+  test_save_plots: true
+  
+  # Logging and monitoring
+  verbose: true
+  very_verbose: false
+  wandb_project: "gmi-modular-studies"  # Set to null to disable WandB
+  wandb_config: null
+  
+  # Model saving
+  save_checkpoints: true 

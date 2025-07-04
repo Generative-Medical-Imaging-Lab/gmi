@@ -1,0 +1,6 @@
+# MNIST test dataset
+test_dataset:
+  class: gmi.datasets.MNIST
+  params:
+    train: false  # Use test split for test
+    images_only: true 

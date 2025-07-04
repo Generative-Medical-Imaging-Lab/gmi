@@ -1,0 +1,6 @@
+# MNIST validation dataset
+validation_dataset:
+  class: gmi.datasets.MNIST
+  params:
+    train: false  # Use test split for validation
+    images_only: true 

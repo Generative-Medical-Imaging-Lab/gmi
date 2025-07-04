@@ -1,8 +1,6 @@
 import torch
 from diffusers import UNet2DModel
 
-from . import DenseNet
-
 class DiffusersUnet2D(torch.nn.Module):
 
     def __init__(self,  

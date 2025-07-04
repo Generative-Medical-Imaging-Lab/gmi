@@ -1,5 +1,3 @@
-
-
 import torch
 from . import Sampler
 
@@ -17,7 +15,9 @@ class DatasetSampler(Sampler):
             indices[i] = torch.randint(0, len(self.dataset), (1,))
             while indices[i] in indices[:i]:
                 indices[i] = torch.randint(0, len(self.dataset), (1,))
+        print(f"[DatasetSampler] Sampled indices: {indices.tolist()}")
         dataset_samples = [self.dataset[i] for i in indices]
+        print(f"[DatasetSampler] Sampled values: {dataset_samples}")
         data_batch = torch.stack(dataset_samples)
         return data_batch
     

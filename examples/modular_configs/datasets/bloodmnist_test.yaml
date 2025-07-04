@@ -1,0 +1,8 @@
+# BloodMNIST test dataset
+test_dataset:
+  class: gmi.datasets.MedMNIST
+  params:
+    dataset_name: "BloodMNIST"
+    size: 28
+    split: "test"
+    images_only: true 

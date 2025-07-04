@@ -3,3 +3,6 @@
 *.png
 *.mp4
 *.csv
+
+MedMNIST/
+MNIST/

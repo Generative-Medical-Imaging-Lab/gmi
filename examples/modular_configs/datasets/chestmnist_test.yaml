@@ -1,0 +1,8 @@
+# ChestMNIST test dataset
+test_dataset:
+  class: gmi.datasets.MedMNIST
+  params:
+    dataset_name: "ChestMNIST"
+    size: 28
+    split: "test"
+    images_only: true 

@@ -1,0 +1,9 @@
+# Simple CNN (shallow) - 1 channel
+simple_cnn_1ch:
+  class: gmi.network.SimpleCNN
+  params:
+    input_channels: 1
+    output_channels: 1
+    hidden_channels_list: [16, 32, 16]
+    activation: "silu"
+    dim: 2 

@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from .. import SimpleCNN, LambdaLayer, DenseNet
+from .. import SimpleCNN, LambdaLayer
 from diffusers import UNet2DModel
 
 

@@ -241,10 +241,10 @@ def train(
             if isinstance(batch_data, (tuple, list)):
                 batch_data = tuple(d.to(device) if isinstance(d, torch.Tensor) else d for d in batch_data)
             elif isinstance(batch_data, torch.Tensor):
-                batch_data = [batch_data.to(device)]
+                batch_data = batch_data.to(device)
 
             optimizer.zero_grad()
-            loss = train_loss_closure(*batch_data if isinstance(batch_data, (tuple, list)) else batch_data)
+            loss = train_loss_closure(batch_data)
             
             if fabric is None:
                 loss.backward()
@@ -313,11 +313,13 @@ def train(
                         batch_data = next(val_loader_iter)
 
                     if isinstance(batch_data, (tuple, list)):
-                        batch_data = tuple(d.to(device) if isinstance(d, torch.Tensor) else d for d in batch_data)
+                        # If it's a tuple/list, extract just the images (first element) for validation
+                        images = batch_data[0].to(device) if isinstance(batch_data[0], torch.Tensor) else batch_data[0]
+                        batch_data = images
                     elif isinstance(batch_data, torch.Tensor):
-                        batch_data = [batch_data.to(device)]
+                        batch_data = batch_data.to(device)
                     
-                    val_loss = val_loss_closure(*batch_data if isinstance(batch_data, (tuple, list)) else batch_data)
+                    val_loss = val_loss_closure(batch_data)
                     val_batch_losses.append(val_loss.item())
 
                     if use_wandb:
@@ -380,12 +382,14 @@ def train(
                         batch_data = next(test_loader_iter)
 
                     if isinstance(batch_data, (tuple, list)):
-                        batch_data = tuple(d.to(device) if isinstance(d, torch.Tensor) else d for d in batch_data)
+                        # If it's a tuple/list, extract just the images (first element) for testing
+                        images = batch_data[0].to(device) if isinstance(batch_data[0], torch.Tensor) else batch_data[0]
+                        batch_data = images
                     elif isinstance(batch_data, torch.Tensor):
-                        batch_data = [batch_data.to(device)]
+                        batch_data = batch_data.to(device)
                     
                     # Test closure returns a dict
-                    test_output = test_closure(*batch_data if isinstance(batch_data, (tuple, list)) else batch_data, epoch=epoch + 1, iteration=iteration)
+                    test_output = test_closure(batch_data, epoch=epoch + 1, iteration=iteration)
                     
                     # Process test output and log immediately to WandB
                     if isinstance(test_output, dict):
@@ -457,12 +461,14 @@ def train(
                     batch_data = next(test_loader_iter)
 
                 if isinstance(batch_data, (tuple, list)):
-                    batch_data = tuple(d.to(device) if isinstance(d, torch.Tensor) else d for d in batch_data)
+                    # If it's a tuple/list, extract just the images (first element) for final testing
+                    images = batch_data[0].to(device) if isinstance(batch_data[0], torch.Tensor) else batch_data[0]
+                    batch_data = images
                 elif isinstance(batch_data, torch.Tensor):
-                    batch_data = [batch_data.to(device)]
+                    batch_data = batch_data.to(device)
                 
                 # Test closure returns a dict
-                test_output = test_closure(*batch_data if isinstance(batch_data, (tuple, list)) else batch_data, epoch=num_epochs, iteration=iteration)
+                test_output = test_closure(batch_data, epoch=num_epochs, iteration=iteration)
                 
                 # Process test output and log immediately to WandB
                 if isinstance(test_output, dict):

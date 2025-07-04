@@ -36,7 +36,6 @@ class MNIST(GMI_Dataset):
         # Handle single index (most common case)
         if isinstance(index, int):
             result = self.dataset[index]
-            print(f"[MNIST.__getitem__] index: {index}, result: {result}")
             data, target = result
             if self.images_only:
                 # Ensure single sample has [channel, height, width] format
