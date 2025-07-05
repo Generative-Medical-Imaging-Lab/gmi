@@ -1,7 +1,0 @@
-# MNIST dataset
-mnist:
-  class: gmi.datasets.MNIST
-  params:
-    size: 28
-    split: "train"
-    images_only: true 

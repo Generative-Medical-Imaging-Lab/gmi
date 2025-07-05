@@ -1,8 +1,0 @@
-# BloodMNIST dataset (medical)
-bloodmnist:
-  class: gmi.datasets.MedMNIST
-  params:
-    dataset_name: "BloodMNIST"
-    size: 28
-    split: "train"
-    images_only: true 
