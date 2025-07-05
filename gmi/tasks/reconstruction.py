@@ -148,224 +148,60 @@ class ImageReconstructionTask(nn.Module):
     class TestClosure(nn.Module):
         """
         Test closure for image reconstruction evaluation.
-        Returns a dict with metrics and optional file paths.
+        Returns a dict with metrics. All logging is handled via WandB; no local test outputs are saved.
         """
-        def __init__(self, parent, plot_vmin=0, plot_vmax=1, plot_save_dir=None, save_plots=True):
+        def __init__(self, parent, plot_vmin=0, plot_vmax=1, plot_save_dir=None, save_plots=False):
             super().__init__()
             self.parent = parent
             self.plot_vmin = plot_vmin
             self.plot_vmax = plot_vmax
-            self.plot_save_dir = plot_save_dir
-            self.save_plots = save_plots
-            
-            # Create save directory if needed
-            if self.save_plots and self.plot_save_dir is not None:
-                Path(self.plot_save_dir).mkdir(parents=True, exist_ok=True)
+            self.plot_save_dir = None
+            self.save_plots = False
         
         def _compute_rmse(self, pred, target):
-            """Compute Root Mean Square Error."""
             return torch.sqrt(F.mse_loss(pred, target)).item()
-        
         def _compute_psnr(self, pred, target):
-            """Compute Peak Signal-to-Noise Ratio."""
             mse = F.mse_loss(pred, target)
             if mse == 0:
                 return float('inf')
-            max_val = 1.0  # Assuming normalized images
+            max_val = 1.0
             return 20 * torch.log10(max_val / torch.sqrt(mse)).item()
-
         def _compute_ssim(self, pred, target):
-            """Compute Structural Similarity Index."""
-            # Simple SSIM implementation - could be replaced with more sophisticated version
             mu1 = pred.mean()
             mu2 = target.mean()
             mu1_sq = mu1 ** 2
             mu2_sq = mu2 ** 2
             mu1_mu2 = mu1 * mu2
-            
             sigma1_sq = pred.var()
             sigma2_sq = target.var()
             sigma12 = ((pred - mu1) * (target - mu2)).mean()
-            
             c1 = 0.01 ** 2
             c2 = 0.03 ** 2
-            
             ssim = ((2 * mu1_mu2 + c1) * (2 * sigma12 + c2)) / ((mu1_sq + mu2_sq + c1) * (sigma1_sq + sigma2_sq + c2))
             return ssim.item()
-
         def _compute_lpips(self, pred, target):
-            """Compute Learned Perceptual Image Patch Similarity."""
-            # Simple LPIPS approximation using MSE in feature space
-            # In practice, you'd want to use a proper LPIPS implementation
             return F.mse_loss(pred, target).item()
-        
-        def _create_reconstruction_plot(self, images, measurements, reconstructions, epoch, iteration=None, batch_idx=0):
-            """
-            Create a 3-subplot figure showing original, measurement, and reconstruction.
-            
-            Args:
-                images: Original images tensor
-                measurements: Measurement tensor
-                reconstructions: Reconstruction tensor
-                epoch: Current epoch number
-                iteration: Current test iteration number (for unique filenames)
-                batch_idx: Index of the batch to plot
-                
-            Returns:
-                File path to saved plot, or None if not saving
-            """
-            if not self.save_plots or self.plot_save_dir is None:
-                return None
-            
-            import matplotlib.pyplot as plt
-            
-            # Extract single image from batch
-            image = images[batch_idx].cpu().detach()
-            measurement = measurements[batch_idx].cpu().detach()
-            reconstruction = reconstructions[batch_idx].cpu().detach()
-            
-            # Handle different tensor shapes
-            if image.dim() == 3:  # C, H, W
-                image = image.permute(1, 2, 0)  # H, W, C
-                measurement = measurement.permute(1, 2, 0)
-                reconstruction = reconstruction.permute(1, 2, 0)
-            
-            # If grayscale, squeeze to 2D
-            if image.shape[-1] == 1:
-                image = image.squeeze(-1)
-                measurement = measurement.squeeze(-1)
-                reconstruction = reconstruction.squeeze(-1)
-            
-            # Create figure
-            fig, axes = plt.subplots(1, 3, figsize=(12, 4))
-            
-            # Plot original image
-            im1 = axes[0].imshow(image, cmap='gray', vmin=self.plot_vmin, vmax=self.plot_vmax)
-            axes[0].set_title('Original Image')
-            axes[0].axis('off')
-            plt.colorbar(im1, ax=axes[0], fraction=0.046, pad=0.04)
-            
-            # Plot measurement
-            im2 = axes[1].imshow(measurement, cmap='gray', vmin=self.plot_vmin, vmax=self.plot_vmax)
-            axes[1].set_title('Measurement')
-            axes[1].axis('off')
-            plt.colorbar(im2, ax=axes[1], fraction=0.046, pad=0.04)
-            
-            # Plot reconstruction
-            im3 = axes[2].imshow(reconstruction, cmap='gray', vmin=self.plot_vmin, vmax=self.plot_vmax)
-            axes[2].set_title('Reconstruction')
-            axes[2].axis('off')
-            plt.colorbar(im3, ax=axes[2], fraction=0.046, pad=0.04)
-            
-            plt.tight_layout()
-            
-            # Create epoch subfolder
-            epoch_dir = Path(self.plot_save_dir) / f"epoch_{epoch:03d}"
-            epoch_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Save plot with unique filename if iteration is provided
-            if iteration is not None:
-                plot_filename = f"reconstruction_comparison_iter_{iteration:02d}.png"
-            else:
-                plot_filename = "reconstruction_comparison.png"
-            plot_path = epoch_dir / plot_filename
-            plt.savefig(plot_path, dpi=150, bbox_inches='tight')
-            plt.close()
-            
-            return str(plot_path)
-        
         def forward(self, batch_data, epoch=None, iteration=None):
-            """
-            Forward pass for test evaluation.
-            
-            Args:
-                batch_data: Batch of images with shape (batch_size, channels, height, width)
-                           e.g., (32, 1, 28, 28) for grayscale MNIST
-                epoch: Current epoch number (optional, for file organization)
-                iteration: Current test iteration number (optional, for unique filenames)
-                
-            Returns:
-                Dict containing metrics and optional file paths
-            """
-            images = batch_data  # Shape: (batch_size, channels, height, width)
-            
-            # Create measurements: expect shape (batch_size, channels, height, width)
-            # If sampler returns extra batch dimension, remove it
+            images = batch_data
             measurements = self.parent.sample_measurements_given_images(1, images)
             if measurements.dim() > images.dim():
-                measurements = measurements[0]  # Remove extra batch dimension
-            
-            # Create reconstructions: expect shape (batch_size, channels, height, width)
-            # If sampler returns extra batch dimension, remove it
+                measurements = measurements[0]
             reconstructions = self.parent.sample_reconstructions_given_measurements(1, measurements)
             if reconstructions.dim() > images.dim():
-                reconstructions = reconstructions[0]  # Remove extra batch dimension
-            
-            # Verify shapes are consistent
-            assert measurements.shape == images.shape, f"Measurement shape {measurements.shape} != image shape {images.shape}"
-            assert reconstructions.shape == images.shape, f"Reconstruction shape {reconstructions.shape} != image shape {images.shape}"
-            
-            # Compute metrics
+                reconstructions = reconstructions[0]
+            assert measurements.shape == images.shape
+            assert reconstructions.shape == images.shape
             rmse = self._compute_rmse(reconstructions, images)
             psnr = self._compute_psnr(reconstructions, images)
             ssim = self._compute_ssim(reconstructions, images)
             lpips = self._compute_lpips(reconstructions, images)
-            
-            # Create result dict
             result = {
                 'rmse': rmse,
                 'psnr': psnr,
                 'ssim': ssim,
                 'lpips': lpips
             }
-            
-            # Create and save plot and CSV if requested
-            if self.save_plots and epoch is not None:
-                # Create plot with unique filename if iteration is provided
-                plot_path = self._create_reconstruction_plot(images, measurements, reconstructions, epoch, iteration)
-                if plot_path is not None:
-                    result['reconstruction_plot'] = plot_path
-                
-                # Create CSV with metrics (only for first iteration to avoid duplicates)
-                # Note: CSV files are saved locally only, not logged to WandB
-                if iteration is None or iteration == 0:
-                    csv_path = self._save_metrics_csv(result, epoch)
-                    # Don't add to result dict to avoid logging to WandB
-            
             return result
-        
-        def _save_metrics_csv(self, metrics, epoch):
-            """
-            Save metrics to a CSV file in the epoch subfolder.
-            
-            Args:
-                metrics: Dictionary of metrics
-                epoch: Current epoch number
-                
-            Returns:
-                File path to saved CSV, or None if not saving
-            """
-            if not self.save_plots or self.plot_save_dir is None:
-                return None
-            
-            import csv
-            
-            # Create epoch subfolder
-            epoch_dir = Path(self.plot_save_dir) / f"epoch_{epoch:03d}"
-            epoch_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Save CSV with consistent filename
-            csv_filename = "test_metrics.csv"
-            csv_path = epoch_dir / csv_filename
-            
-            with open(csv_path, 'w', newline='') as csvfile:
-                writer = csv.writer(csvfile)
-                writer.writerow(['metric', 'value'])
-                for metric_name, value in metrics.items():
-                    if metric_name not in ['reconstruction_plot', 'metrics_csv']:  # Skip file paths
-                        writer.writerow([metric_name, value])
-            
-            return str(csv_path)
 
     def train_image_reconstructor(self, 
                                  train_data=None,
@@ -383,8 +219,8 @@ class ImageReconstructionTask(nn.Module):
                                  num_epochs=100,
                                  num_iterations_train=100,
                                  num_iterations_val=10,
-                                 num_iterations_test=10,
-                                 learning_rate=0.001,
+                                 num_iterations_test=1,
+                                 learning_rate=1e-3,
                                  use_ema=True,
                                  ema_decay=0.999,
                                  early_stopping=True,
@@ -404,6 +240,7 @@ class ImageReconstructionTask(nn.Module):
                                  test_plot_vmin=0,
                                  test_plot_vmax=1,
                                  test_save_plots=True,
+                                 final_test_iterations='all',
                                  **kwargs):
         """
         Train the image reconstructor using the gmi.train function.
@@ -445,6 +282,7 @@ class ImageReconstructionTask(nn.Module):
             test_plot_vmin: Minimum value for test plot colorbar (default: 0)
             test_plot_vmax: Maximum value for test plot colorbar (default: 1)
             test_save_plots: Whether to save reconstruction plots during testing (default: True)
+            final_test_iterations: Number of iterations for final test evaluation. If set to 'all', will run over the full test dataset sequentially and save per-sample metrics (rmse, psnr, ssim, lpips) to a CSV for histogram analysis.
             **kwargs: Additional arguments passed to gmi.train
         Returns:
             Tuple of (train_losses, val_losses, eval_metrics)
@@ -478,18 +316,13 @@ class ImageReconstructionTask(nn.Module):
             val_loss_closure = train_loss_closure
         
         if test_closure is None and test_data is not None:
-            # Create test closure with plotting
-            test_plot_dir = None
-            if test_save_plots and experiment_name:
-                test_plot_dir = Path(f"gmi_data/outputs/{experiment_name}/test_outputs")
-                test_plot_dir.mkdir(parents=True, exist_ok=True)
-            
+            # Create test closure with no local output saving
             test_closure = self.TestClosure(
                 parent=self,
                 plot_vmin=test_plot_vmin,
                 plot_vmax=test_plot_vmax,
-                plot_save_dir=str(test_plot_dir) if test_plot_dir else None,
-                save_plots=test_save_plots
+                plot_save_dir=None,
+                save_plots=False
             )
         
         # Setup model saving if requested
@@ -523,7 +356,7 @@ class ImageReconstructionTask(nn.Module):
             num_iterations=num_iterations_train,
             num_iterations_val=num_iterations_val,
             num_iterations_test=num_iterations_test,
-            final_test_iterations=kwargs.get('final_test_iterations'),
+            final_test_iterations=final_test_iterations,
             lr=learning_rate,
             use_ema=use_ema,
             ema_decay=ema_decay,
@@ -538,8 +371,16 @@ class ImageReconstructionTask(nn.Module):
             save_best_model_path=save_best_model_path,
             model_to_save=model_to_save,
             device=device,
+            experiment_name=experiment_name,
             **kwargs
         )
+        
+        # Download WandB data for this specific run if WandB was used
+        if wandb_project is not None:
+            try:
+                self._download_wandb_run_data(experiment_name, wandb_project, save_best_model_path)
+            except Exception as e:
+                print(f"Warning: Failed to download WandB data: {e}")
         
         return train_losses, val_losses, eval_metrics
 
@@ -951,11 +792,97 @@ class ImageReconstructionTask(nn.Module):
                 
         return LossClosure(self, self.image_reconstructor, loss_fn) 
 
-
-
-
-
-
+    def _download_wandb_run_data(self, experiment_name, wandb_project, save_best_model_path):
+        """
+        Download WandB data for a specific run and save it locally.
+        
+        Args:
+            experiment_name: Name of the experiment (used to identify the run)
+            wandb_project: WandB project name
+            save_best_model_path: Path where model was saved (used to determine output directory)
+        """
+        try:
+            import wandb
+            import json
+            from pathlib import Path
+            
+            # Initialize WandB API
+            api = wandb.Api()
+            
+            # Find the run by name (experiment_name should match the run name)
+            runs = api.runs(wandb_project, filters={"display_name": experiment_name})
+            
+            if not runs:
+                print(f"Warning: No WandB run found for experiment '{experiment_name}'")
+                return
+            
+            run = runs[0]  # Get the first (and should be only) matching run
+            print(f"Found WandB run: {run.name} (ID: {run.id})")
+            
+            # Create output directory
+            if save_best_model_path:
+                output_dir = Path(save_best_model_path).parent / "wandb_data"
+            else:
+                output_dir = Path(f"gmi_data/outputs/{experiment_name}/wandb_data")
+            
+            output_dir.mkdir(parents=True, exist_ok=True)
+            print(f"Downloading WandB data to: {output_dir}")
+            
+            # Download run history (metrics over time)
+            try:
+                print("  Downloading run history...")
+                history = run.history()
+                if not history.empty:
+                    history_file = output_dir / "run_history.csv"
+                    history.to_csv(history_file, index=False)
+                    print(f"    Saved {len(history)} history records to {history_file}")
+                else:
+                    print("    No history data found")
+            except Exception as e:
+                print(f"    Error downloading history: {e}")
+            
+            # Download run config
+            try:
+                print("  Downloading run config...")
+                config_file = output_dir / "run_config.json"
+                with open(config_file, 'w') as f:
+                    json.dump(run.config, f, indent=2, default=str)
+                print(f"    Saved config to {config_file}")
+            except Exception as e:
+                print(f"    Error downloading config: {e}")
+            
+            # Download run summary
+            try:
+                print("  Downloading run summary...")
+                summary_file = output_dir / "run_summary.json"
+                with open(summary_file, 'w') as f:
+                    json.dump(run.summary, f, indent=2, default=str)
+                print(f"    Saved summary to {summary_file}")
+            except Exception as e:
+                print(f"    Error downloading summary: {e}")
+            
+            # Download files (including plots and other media)
+            try:
+                print("  Downloading files...")
+                files_dir = output_dir / "files"
+                files_dir.mkdir(exist_ok=True)
+                
+                for file in run.files():
+                    try:
+                        file_path = files_dir / file.name
+                        file.download(replace=True, root=str(files_dir))
+                        print(f"    Downloaded file: {file.name}")
+                    except Exception as e:
+                        print(f"    Error downloading file {file.name}: {e}")
+            except Exception as e:
+                print(f"    Error downloading files: {e}")
+            
+            print(f"✅ WandB data download completed for {experiment_name}")
+            
+        except ImportError:
+            print("Warning: wandb not available, skipping WandB data download")
+        except Exception as e:
+            print(f"Error downloading WandB data: {e}")
 
 # from ..diffusion import UnconditionalDiffusionModel
 

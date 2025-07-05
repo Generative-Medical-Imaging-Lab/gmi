@@ -1,6 +1,9 @@
 # Training configuration for modular experiments
 # Optimized for fast training of 27 studies (3x3x3)
 
+# Experiment name (used for output directories and logging)
+experiment_name: "default_mnist_linear_conv"
+
 # Default components (can be overridden by command line arguments)
 train_dataset:
   class: gmi.datasets.MNIST
@@ -35,8 +38,9 @@ image_reconstructor:
 # Training parameters
 training:
   # Fast training for multiple experiments
-  num_epochs: 2  # Reduced for speed
-  num_iterations_train: 50  # Reduced for speed
+  num_epochs: 100  # Full training
+  num_iterations_train: 100  # Reduced for speed
+  final_test_iterations: 'all'  # Run final test on full test dataset
   learning_rate: 0.001
   device: "cuda"  # or "cpu"
   
@@ -57,7 +61,7 @@ training:
   
   # Validation and test parameters
   num_iterations_val: 10
-  num_iterations_test: 5  # Reduced for speed
+  num_iterations_test: 1  # Reduced for speed
   
   # Final evaluation parameters
   final_test_iterations: 20  # Reduced for speed
@@ -70,7 +74,7 @@ training:
   # Logging and monitoring
   verbose: true
   very_verbose: false
-  wandb_project: "gmi-modular-studies"  # Set to null to disable WandB
+  wandb_project: "gmi-modular-studies"  # Enable WandB logging
   wandb_config: null
   
   # Model saving

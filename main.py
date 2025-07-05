@@ -143,5 +143,8 @@ def evaluate_image_reconstructor(config, model_path, device, output_dir):
     # TODO: Implement evaluation logic
     click.echo("Evaluation functionality not yet implemented")
 
+
+
+
 if __name__ == "__main__":
     cli() 

@@ -106,7 +106,8 @@ def train(
     shuffle_test=None,
     train_loss_closure=None,
     val_loss_closure=None,
-    test_closure=None
+    test_closure=None,
+    experiment_name=None
 ):
     """
     Trains any model with an Adam optimizer using a provided loss closure, with optional early stopping, EMA, WandB logging,
@@ -195,7 +196,14 @@ def train(
     # Initialize WandB if enabled
     if use_wandb:
         try:
-            wandb.init(project=wandb_project, config=wandb_config)
+            # Get experiment name from config or parameter
+            run_name = None
+            if experiment_name:
+                run_name = experiment_name
+            elif wandb_config and isinstance(wandb_config, dict):
+                run_name = wandb_config.get('experiment_name')
+            
+            wandb.init(project=wandb_project, config=wandb_config, name=run_name)
         except Exception as e:
             print(f"Warning: WandB initialization failed ({e}). Falling back to disabled mode.")
             wandb.init(project=wandb_project, config=wandb_config, mode='disabled')
@@ -220,6 +228,9 @@ def train(
     # Trackers for loss history and evaluation metrics
     train_losses, val_losses = [], []
     eval_metrics = []
+    test_metrics_history = []  # Track test metrics for each epoch
+    final_test_metrics = None  # Track final test metrics
+    final_test_summary = {}  # Track final test summary
     train_loader_iter = iter(train_loader)
     val_loader_iter = iter(validation_loader) if validation_loader else None
     test_loader_iter = iter(test_loader) if test_loader else None
@@ -426,10 +437,21 @@ def train(
                     if all(isinstance(v, (int, float)) for v in values):
                         # Numeric metrics - average them for epoch summary
                         avg_value = sum(values) / len(values)
-                        wandb.log({f"test_{metric_name}_epoch_avg": avg_value})
+                        wandb.log({f"test_{metric_name}": avg_value})
                     else:
                         # Non-numeric values - just log the last one
-                        wandb.log({f"test_{metric_name}_epoch_avg": values[-1]})
+                        wandb.log({f"test_{metric_name}": values[-1]})
+            
+            # Store test metrics for this epoch
+            epoch_test_summary = {}
+            if test_metrics:
+                for metric_name, values in test_metrics.items():
+                    if all(isinstance(v, (int, float)) for v in values):
+                        avg_value = sum(values) / len(values)
+                        epoch_test_summary[metric_name] = avg_value
+                    else:
+                        epoch_test_summary[metric_name] = values[-1]
+            test_metrics_history.append(epoch_test_summary)
             
             # Print test metrics if verbose
             if verbose and test_metrics:
@@ -446,78 +468,165 @@ def train(
         ema.store()
         ema.copy_to()
     
-    # Final test evaluation
+    # Final test evaluation - always run if configured, regardless of early stopping
     if final_test_iterations is not None and test_loader and test_closure is not None:
         print(f"\nRunning final test evaluation with {final_test_iterations} iterations...")
         test_closure.eval()
         final_test_metrics = {}
+        per_sample_metrics = []  # List of dicts for each sample
+        import numpy as np
+        import csv
+        from pathlib import Path
         
         with torch.no_grad():
-            for iteration in tqdm(range(final_test_iterations), desc="Final Test Evaluation"):
-                try:
-                    batch_data = next(test_loader_iter)
-                except StopIteration:
-                    test_loader_iter = iter(test_loader)
-                    batch_data = next(test_loader_iter)
+            if final_test_iterations == 'all':
+                # Iterate through the test DataLoader once, no repeats
+                for batch_data in tqdm(test_loader, desc="Final Test Evaluation (all)"):
+                    if isinstance(batch_data, (tuple, list)):
+                        images = batch_data[0].to(device) if isinstance(batch_data[0], torch.Tensor) else batch_data[0]
+                        batch_data = images
+                    elif isinstance(batch_data, torch.Tensor):
+                        batch_data = batch_data.to(device)
+                    # Test closure returns a dict of batch metrics
+                    # We'll compute metrics for each sample in the batch
+                    images = batch_data
+                    measurements = test_closure.parent.sample_measurements_given_images(1, images)
+                    if measurements.dim() > images.dim():
+                        measurements = measurements[0]
+                    reconstructions = test_closure.parent.sample_reconstructions_given_measurements(1, measurements)
+                    if reconstructions.dim() > images.dim():
+                        reconstructions = reconstructions[0]
+                    for i in range(images.shape[0]):
+                        img = images[i:i+1]
+                        rec = reconstructions[i:i+1]
+                        rmse = test_closure._compute_rmse(rec, img)
+                        psnr = test_closure._compute_psnr(rec, img)
+                        ssim = test_closure._compute_ssim(rec, img)
+                        lpips = test_closure._compute_lpips(rec, img)
+                        per_sample_metrics.append({
+                            'index': len(per_sample_metrics),
+                            'rmse': rmse,
+                            'psnr': psnr,
+                            'ssim': ssim,
+                            'lpips': lpips
+                        })
+                # Save per-sample metrics to CSV
+                if save_best_model_path is not None:
+                    per_sample_csv = Path(save_best_model_path).parent / "final_test_metrics_per_sample.csv"
+                    with open(per_sample_csv, 'w', newline='') as csvfile:
+                        writer = csv.DictWriter(csvfile, fieldnames=['index', 'rmse', 'psnr', 'ssim', 'lpips'])
+                        writer.writeheader()
+                        for row in per_sample_metrics:
+                            writer.writerow(row)
+                    if verbose:
+                        print(f"Per-sample final test metrics saved to: {per_sample_csv}")
+                # Compute summary statistics
+                if per_sample_metrics:
+                    for metric in ['rmse', 'psnr', 'ssim', 'lpips']:
+                        values = np.array([row[metric] for row in per_sample_metrics])
+                        final_test_summary[f'{metric}_mean'] = float(np.mean(values))
+                        final_test_summary[f'{metric}_std'] = float(np.std(values))
+                        final_test_summary[f'{metric}_min'] = float(np.min(values))
+                        final_test_summary[f'{metric}_max'] = float(np.max(values))
+            else:
+                for iteration in tqdm(range(final_test_iterations), desc="Final Test Evaluation"):
+                    try:
+                        batch_data = next(test_loader_iter)
+                    except StopIteration:
+                        test_loader_iter = iter(test_loader)
+                        batch_data = next(test_loader_iter)
 
-                if isinstance(batch_data, (tuple, list)):
-                    # If it's a tuple/list, extract just the images (first element) for final testing
-                    images = batch_data[0].to(device) if isinstance(batch_data[0], torch.Tensor) else batch_data[0]
-                    batch_data = images
-                elif isinstance(batch_data, torch.Tensor):
-                    batch_data = batch_data.to(device)
-                
-                # Test closure returns a dict
-                test_output = test_closure(batch_data, epoch=num_epochs, iteration=iteration)
-                
-                # Process test output and log immediately to WandB
-                if isinstance(test_output, dict):
-                    for key, value in test_output.items():
-                        if key not in final_test_metrics:
-                            final_test_metrics[key] = []
-                        final_test_metrics[key].append(value)
-                        
-                        # Log numeric metrics immediately to WandB every iteration
-                        if isinstance(value, (int, float)) and use_wandb:
-                            wandb.log({f"final_test_{key}": value})
-                        
-                        # Log media files immediately to WandB with consistent key
-                        if isinstance(value, str) and os.path.exists(value):
-                            file_ext = os.path.splitext(value)[1].lower()
-                            if file_ext in ['.png', '.jpg', '.jpeg', '.gif', '.mp4', '.avi', '.mov']:
-                                try:
-                                    media_key = f"final_test_{key}"
-                                    if file_ext in ['.png', '.jpg', '.jpeg', '.gif']:
-                                        wandb.log({media_key: wandb.Image(value)})
-                                    else:
-                                        wandb.log({media_key: wandb.Video(value)})
-                                except Exception as e:
-                                    print(f"Warning: Could not log file {value} to wandb: {e}")
-                else:
-                    # If not a dict, treat as a single metric
-                    if 'test_output' not in final_test_metrics:
-                        final_test_metrics['test_output'] = []
-                    final_test_metrics['test_output'].append(test_output)
-        
-        # Log averaged metrics for the final test evaluation
-        if use_wandb and final_test_metrics:
-            for metric_name, values in final_test_metrics.items():
-                if all(isinstance(v, (int, float)) for v in values):
-                    # Numeric metrics - average them for final summary
-                    avg_value = sum(values) / len(values)
-                    wandb.log({f"final_test_{metric_name}_avg": avg_value})
-                else:
-                    # Non-numeric values - just log the last one
-                    wandb.log({f"final_test_{metric_name}_avg": values[-1]})
-        
+                    if isinstance(batch_data, (tuple, list)):
+                        images = batch_data[0].to(device) if isinstance(batch_data[0], torch.Tensor) else batch_data[0]
+                        batch_data = images
+                    elif isinstance(batch_data, torch.Tensor):
+                        batch_data = batch_data.to(device)
+                    # Test closure returns a dict
+                    test_output = test_closure(batch_data, epoch=num_epochs, iteration=iteration)
+                    if isinstance(test_output, dict):
+                        for key, value in test_output.items():
+                            if key not in final_test_metrics:
+                                final_test_metrics[key] = []
+                            final_test_metrics[key].append(value)
+                    else:
+                        if 'test_output' not in final_test_metrics:
+                            final_test_metrics['test_output'] = []
+                        final_test_metrics['test_output'].append(test_output)
+                # Store final test metrics summary
+                if final_test_metrics:
+                    for metric_name, values in final_test_metrics.items():
+                        if all(isinstance(v, (int, float)) for v in values):
+                            avg_value = sum(values) / len(values)
+                            final_test_summary[metric_name] = avg_value
+                        else:
+                            final_test_summary[metric_name] = values[-1]
         # Print final test metrics if verbose
-        if verbose and final_test_metrics:
+        if verbose and (final_test_metrics or per_sample_metrics):
             print(f"\nFinal test evaluation metrics:")
-            for metric_name, values in final_test_metrics.items():
-                if all(isinstance(v, (int, float)) for v in values):
-                    avg_value = sum(values) / len(values)
-                    print(f"  final_test_{metric_name}: {avg_value:.4f}")
-                else:
-                    print(f"  final_test_{metric_name}: {values[-1]}")
+            if per_sample_metrics:
+                for metric in ['rmse', 'psnr', 'ssim', 'lpips']:
+                    values = [row[metric] for row in per_sample_metrics]
+                    print(f"  {metric}: mean={np.mean(values):.4f}, std={np.std(values):.4f}, min={np.min(values):.4f}, max={np.max(values):.4f}")
+            if final_test_metrics:
+                for metric_name, values in final_test_metrics.items():
+                    if all(isinstance(v, (int, float)) for v in values):
+                        avg_value = sum(values) / len(values)
+                        print(f"  final_test_{metric_name}: {avg_value:.4f}")
+                    else:
+                        print(f"  final_test_{metric_name}: {values[-1]}")
+    
+    # Save training history locally if we have a save path
+    if save_best_model_path is not None:
+        import json
+        import os
+        from pathlib import Path
+        
+        # Create training history file
+        history_path = Path(save_best_model_path).parent / "training_history.json"
+        history_data = {
+            "train_losses": train_losses,
+            "val_losses": val_losses,
+            "eval_metrics": eval_metrics,
+            "test_metrics_history": test_metrics_history,  # Per-epoch test metrics
+            "final_test_metrics": final_test_summary,  # Final test evaluation summary
+            "num_epochs": len(train_losses),
+            "actual_epochs_trained": len(train_losses),  # May be less than num_epochs due to early stopping
+            "final_train_loss": train_losses[-1] if train_losses else None,
+            "final_val_loss": val_losses[-1] if val_losses else None,
+            "best_val_loss": min(val_losses) if val_losses else None,
+            "best_val_epoch": val_losses.index(min(val_losses)) + 1 if val_losses else None,
+            "early_stopping_triggered": len(train_losses) < num_epochs,
+            "training_config": {
+                "num_epochs": num_epochs,
+                "num_iterations": num_iterations,
+                "num_iterations_val": num_iterations_val,
+                "num_iterations_test": num_iterations_test,
+                "final_test_iterations": final_test_iterations,
+                "early_stopping": early_stopping,
+                "patience": patience,
+                "val_loss_smoothing": val_loss_smoothing,
+                "min_delta": min_delta,
+                "use_ema": use_ema,
+                "ema_decay": ema_decay,
+                "learning_rate": lr
+            }
+        }
+        
+        with open(history_path, 'w') as f:
+            json.dump(history_data, f, indent=2)
+        
+        if verbose:
+            print(f"Training history saved to: {history_path}")
+        
+        # Note: Detailed test metrics and summaries are now primarily logged to WandB
+        # and downloaded at the end of training via the ImageReconstructionTask
+    
+    # Finish WandB run if it was initialized
+    if use_wandb:
+        try:
+            if wandb.run is not None:
+                wandb.finish()
+        except Exception as e:
+            print(f"Warning: Failed to finish WandB run: {e}")
     
     return train_losses, val_losses, eval_metrics

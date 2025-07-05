@@ -57,13 +57,15 @@ for DATASET in "${DATASETS[@]}"; do
       # Run the training command with error handling
       if gmi train-image-reconstructor \
         $CONFIG_DIR/training_config.yaml \
-        --train-dataset $CONFIG_DIR/datasets/${DATASET}.yaml \
+        --train-dataset $CONFIG_DIR/datasets/${DATASET}_train.yaml \
         --measurement-simulator $CONFIG_DIR/measurement_simulators/${SIMULATOR}.yaml \
         --image-reconstructor $CONFIG_DIR/image_reconstructors/${RECONSTRUCTOR}.yaml \
         --device cuda \
         --experiment-name "$EXPERIMENT_NAME"; then
         echo "✅ Study $COUNT completed successfully"
         SUCCESS_COUNT=$((SUCCESS_COUNT+1))
+        
+        # Note: WandB data is now automatically downloaded at the end of training
       else
         echo "❌ Study $COUNT failed: $DATASET + $SIMULATOR + $RECONSTRUCTOR"
         FAILED_STUDIES+=("$EXPERIMENT_NAME")
