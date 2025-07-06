@@ -4,6 +4,7 @@ from torch_ema import ExponentialMovingAverage
 from tqdm import tqdm
 import wandb
 from typing import Callable, Dict, Any, Optional
+import time
 
 def extract_model_from_loss_closure(loss_closure):
     """Extract the model from a loss closure, supporting different structures."""
@@ -209,6 +210,21 @@ def train(
             wandb.init(project=wandb_project, config=wandb_config, mode='disabled')
             use_wandb = True  # Keep using WandB but in disabled mode
     
+    # Debug: Check GPU usage
+    print(f"DEBUG: Device being used: {device}")
+    print(f"DEBUG: CUDA available: {torch.cuda.is_available()}")
+    if torch.cuda.is_available():
+        print(f"DEBUG: GPU name: {torch.cuda.get_device_name(0)}")
+        print(f"DEBUG: GPU memory allocated: {torch.cuda.memory_allocated(0) / 1024**3:.2f} GB")
+        print(f"DEBUG: GPU memory cached: {torch.cuda.memory_reserved(0) / 1024**3:.2f} GB")
+    
+    # Debug: Check model device placement
+    print(f"DEBUG: train_loss_closure device: {next(train_loss_closure.parameters()).device}")
+    if val_loss_closure is not None:
+        print(f"DEBUG: val_loss_closure device: {next(val_loss_closure.parameters()).device}")
+    if test_closure is not None:
+        print(f"DEBUG: test_closure device: {next(test_closure.parameters()).device}")
+    
     # Initialize EMA if enabled
     ema = ExponentialMovingAverage(train_loss_closure.parameters(), decay=ema_decay) if use_ema else None
     
@@ -242,6 +258,9 @@ def train(
         train_loss_closure.train()
         train_batch_losses = []
 
+        print(f"DEBUG: Starting epoch {epoch + 1}, training iterations: {num_iterations}")
+        epoch_start_time = time.time()
+
         for _ in tqdm(range(num_iterations), desc=f"Training Epoch {epoch + 1}/{num_epochs}"):
             try:
                 batch_data = next(train_loader_iter)
@@ -273,15 +292,26 @@ def train(
 
             # Log training loss to WandB
             if use_wandb:
-                wandb.log({"train_loss": loss.item()})
+                wandb.log({"train_loss": loss.item(), "epoch": epoch + 1})
 
             train_batch_losses.append(loss.item())
             if very_verbose:
                 print(f"Training Batch Loss: {loss.item():.4f}")
         
+        epoch_train_time = time.time() - epoch_start_time
+        print(f"DEBUG: Training epoch {epoch + 1} took {epoch_train_time:.2f} seconds")
+        
         # Record average train loss for the epoch
         train_epoch_loss = sum(train_batch_losses) / len(train_batch_losses)
         train_losses.append(train_epoch_loss)
+
+        # Log epoch-level metrics to WandB
+        if use_wandb:
+            wandb.log({
+                "epoch": epoch + 1,
+                "epoch_train_loss": train_epoch_loss,
+                "epoch_train_time_seconds": epoch_train_time
+            })
 
         # Run evaluation if configured
         if eval_fn is not None and epochs_per_evaluation is not None and (epoch + 1) % epochs_per_evaluation == 0:
@@ -334,7 +364,7 @@ def train(
                     val_batch_losses.append(val_loss.item())
 
                     if use_wandb:
-                        wandb.log({"val_loss": val_loss.item()})
+                        wandb.log({"val_loss": val_loss.item(), "epoch": epoch + 1})
 
             # Record average validation loss
             val_epoch_loss = sum(val_batch_losses) / len(val_batch_losses)
@@ -349,6 +379,14 @@ def train(
                 smoothed_val_loss = val_epoch_loss
             else:
                 smoothed_val_loss = val_loss_smoothing * smoothed_val_loss + (1 - val_loss_smoothing) * val_epoch_loss
+
+            # Log validation metrics to WandB
+            if use_wandb:
+                wandb.log({
+                    "epoch": epoch + 1,
+                    "epoch_val_loss": val_epoch_loss,
+                    "epoch_smoothed_val_loss": smoothed_val_loss
+                })
 
             # Print losses if verbose
             if verbose:
@@ -380,6 +418,8 @@ def train(
         
         # Test phase
         if test_loader and test_closure is not None:
+            print(f"DEBUG: Starting test phase for epoch {epoch + 1}")
+            test_start_time = time.time()
             test_closure.eval()
             test_metrics = {}
             test_files = []
@@ -411,7 +451,7 @@ def train(
                             
                             # Log numeric metrics immediately to WandB every iteration
                             if isinstance(value, (int, float)) and use_wandb:
-                                wandb.log({f"test_{key}": value})
+                                wandb.log({f"test_{key}": value, "epoch": epoch + 1})
                             
                             # Log media files immediately to WandB with consistent key
                             if isinstance(value, str) and os.path.exists(value):
@@ -420,9 +460,9 @@ def train(
                                     try:
                                         media_key = f"test_{key}"
                                         if file_ext in ['.png', '.jpg', '.jpeg', '.gif']:
-                                            wandb.log({media_key: wandb.Image(value)})
+                                            wandb.log({media_key: wandb.Image(value), "epoch": epoch + 1})
                                         else:
-                                            wandb.log({media_key: wandb.Video(value)})
+                                            wandb.log({media_key: wandb.Video(value), "epoch": epoch + 1})
                                     except Exception as e:
                                         print(f"Warning: Could not log file {value} to wandb: {e}")
                     else:
@@ -430,6 +470,9 @@ def train(
                         if 'test_output' not in test_metrics:
                             test_metrics['test_output'] = []
                         test_metrics['test_output'].append(test_output)
+            
+            test_time = time.time() - test_start_time
+            print(f"DEBUG: Test phase for epoch {epoch + 1} took {test_time:.2f} seconds")
             
             # Log averaged metrics for the epoch (in addition to per-iteration metrics)
             if use_wandb and test_metrics:

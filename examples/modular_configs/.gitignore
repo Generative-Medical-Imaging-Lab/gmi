@@ -1,0 +1,3 @@
+# Ignore all PNG and CSV files in this folder
+*.png
+*.csv 

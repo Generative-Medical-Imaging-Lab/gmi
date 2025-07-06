@@ -148,15 +148,15 @@ class ImageReconstructionTask(nn.Module):
     class TestClosure(nn.Module):
         """
         Test closure for image reconstruction evaluation.
-        Returns a dict with metrics. All logging is handled via WandB; no local test outputs are saved.
+        Returns a dict with metrics and image file paths for WandB logging.
         """
         def __init__(self, parent, plot_vmin=0, plot_vmax=1, plot_save_dir=None, save_plots=False):
             super().__init__()
             self.parent = parent
             self.plot_vmin = plot_vmin
             self.plot_vmax = plot_vmax
-            self.plot_save_dir = None
-            self.save_plots = False
+            self.plot_save_dir = plot_save_dir
+            self.save_plots = save_plots
         
         def _compute_rmse(self, pred, target):
             return torch.sqrt(F.mse_loss(pred, target)).item()
@@ -181,6 +181,61 @@ class ImageReconstructionTask(nn.Module):
             return ssim.item()
         def _compute_lpips(self, pred, target):
             return F.mse_loss(pred, target).item()
+        
+        def _save_reconstruction_plot(self, images, measurements, reconstructions, epoch, iteration):
+            """Save a plot showing original image, measurement, and reconstruction (single example)."""
+            import matplotlib.pyplot as plt
+            import numpy as np
+            from pathlib import Path
+            
+            # Convert tensors to numpy for plotting
+            images_np = images.cpu().detach().numpy()
+            measurements_np = measurements.cpu().detach().numpy()
+            reconstructions_np = reconstructions.cpu().detach().numpy()
+            
+            # Get number of channels
+            channels = images_np.shape[1]
+            
+            # Create a simple 1-row, 3-column plot showing just the first example
+            fig, axes = plt.subplots(1, 3, figsize=(9, 3))
+            
+            # Original image (first sample)
+            if channels == 1:
+                axes[0].imshow(images_np[0, 0], cmap='gray', vmin=self.plot_vmin, vmax=self.plot_vmax)
+            else:
+                axes[0].imshow(np.transpose(images_np[0], (1, 2, 0)))
+            axes[0].set_title('Original')
+            axes[0].axis('off')
+            
+            # Measurement (first sample)
+            if channels == 1:
+                axes[1].imshow(measurements_np[0, 0], cmap='gray', vmin=self.plot_vmin, vmax=self.plot_vmax)
+            else:
+                axes[1].imshow(np.transpose(measurements_np[0], (1, 2, 0)))
+            axes[1].set_title('Measurement')
+            axes[1].axis('off')
+            
+            # Reconstruction (first sample)
+            if channels == 1:
+                axes[2].imshow(reconstructions_np[0, 0], cmap='gray', vmin=self.plot_vmin, vmax=self.plot_vmax)
+            else:
+                axes[2].imshow(np.transpose(reconstructions_np[0], (1, 2, 0)))
+            axes[2].set_title('Reconstruction')
+            axes[2].axis('off')
+            
+            plt.tight_layout()
+            
+            # Save the plot if requested
+            plot_path = None
+            if self.save_plots and self.plot_save_dir is not None:
+                plot_dir = Path(self.plot_save_dir)
+                plot_dir.mkdir(parents=True, exist_ok=True)
+                plot_path = plot_dir / f"reconstruction_epoch_{epoch}_iter_{iteration}.png"
+                plt.savefig(plot_path, dpi=150, bbox_inches='tight')
+            
+            plt.close()
+            return str(plot_path) if plot_path else None
+        
         def forward(self, batch_data, epoch=None, iteration=None):
             images = batch_data
             measurements = self.parent.sample_measurements_given_images(1, images)
@@ -191,16 +246,27 @@ class ImageReconstructionTask(nn.Module):
                 reconstructions = reconstructions[0]
             assert measurements.shape == images.shape
             assert reconstructions.shape == images.shape
+            
+            # Compute metrics
             rmse = self._compute_rmse(reconstructions, images)
             psnr = self._compute_psnr(reconstructions, images)
             ssim = self._compute_ssim(reconstructions, images)
             lpips = self._compute_lpips(reconstructions, images)
+            
+            # Generate and save reconstruction plot
+            plot_path = self._save_reconstruction_plot(images, measurements, reconstructions, epoch, iteration)
+            
             result = {
                 'rmse': rmse,
                 'psnr': psnr,
                 'ssim': ssim,
                 'lpips': lpips
             }
+            
+            # Add plot path to result if available
+            if plot_path:
+                result['reconstruction_plot'] = plot_path
+            
             return result
 
     def train_image_reconstructor(self, 
@@ -316,13 +382,21 @@ class ImageReconstructionTask(nn.Module):
             val_loss_closure = train_loss_closure
         
         if test_closure is None and test_data is not None:
-            # Create test closure with no local output saving
+            # Create test closure with image saving enabled for WandB logging
+            test_plot_save_dir = None
+            if experiment_name:
+                # Create output directory for plots
+                output_dir = Path(f"gmi_data/outputs/{experiment_name}")
+                output_dir.mkdir(parents=True, exist_ok=True)
+                test_plot_save_dir = output_dir / "test_plots"
+                test_plot_save_dir.mkdir(exist_ok=True)
+            
             test_closure = self.TestClosure(
                 parent=self,
                 plot_vmin=test_plot_vmin,
                 plot_vmax=test_plot_vmax,
-                plot_save_dir=None,
-                save_plots=False
+                plot_save_dir=str(test_plot_save_dir) if test_plot_save_dir else None,
+                save_plots=test_save_plots
             )
         
         # Setup model saving if requested
@@ -794,95 +868,97 @@ class ImageReconstructionTask(nn.Module):
 
     def _download_wandb_run_data(self, experiment_name, wandb_project, save_best_model_path):
         """
-        Download WandB data for a specific run and save it locally.
+        Download WandB data for a specific run including GPU metrics.
         
         Args:
-            experiment_name: Name of the experiment (used to identify the run)
+            experiment_name: Name of the experiment (used to find the run)
             wandb_project: WandB project name
-            save_best_model_path: Path where model was saved (used to determine output directory)
+            save_best_model_path: Path where model was saved (used for output directory)
         """
         try:
             import wandb
-            import json
+            import pandas as pd
             from pathlib import Path
             
-            # Initialize WandB API
+            # Find the run by name
             api = wandb.Api()
+            runs = api.runs(f"{wandb_project}")
             
-            # Find the run by name (experiment_name should match the run name)
-            runs = api.runs(wandb_project, filters={"display_name": experiment_name})
+            # Find the run with matching name
+            target_run = None
+            for run in runs:
+                if run.name == experiment_name:
+                    target_run = run
+                    break
             
-            if not runs:
-                print(f"Warning: No WandB run found for experiment '{experiment_name}'")
+            if target_run is None:
+                print(f"Could not find WandB run with name: {experiment_name}")
                 return
             
-            run = runs[0]  # Get the first (and should be only) matching run
-            print(f"Found WandB run: {run.name} (ID: {run.id})")
+            print(f"Found WandB run: {experiment_name} (ID: {target_run.id})")
             
             # Create output directory
-            if save_best_model_path:
+            if save_best_model_path is not None:
                 output_dir = Path(save_best_model_path).parent / "wandb_data"
             else:
                 output_dir = Path(f"gmi_data/outputs/{experiment_name}/wandb_data")
-            
             output_dir.mkdir(parents=True, exist_ok=True)
+            
             print(f"Downloading WandB data to: {output_dir}")
             
-            # Download run history (metrics over time)
-            try:
-                print("  Downloading run history...")
-                history = run.history()
-                if not history.empty:
-                    history_file = output_dir / "run_history.csv"
-                    history.to_csv(history_file, index=False)
-                    print(f"    Saved {len(history)} history records to {history_file}")
-                else:
-                    print("    No history data found")
-            except Exception as e:
-                print(f"    Error downloading history: {e}")
+            # Download regular run history (metrics, config, summary)
+            print("  Downloading run history...")
+            history = target_run.history()
+            history_path = output_dir / "run_history.csv"
+            history.to_csv(history_path, index=False)
+            print(f"    Saved {len(history)} history records to {history_path}")
             
             # Download run config
-            try:
-                print("  Downloading run config...")
-                config_file = output_dir / "run_config.json"
-                with open(config_file, 'w') as f:
-                    json.dump(run.config, f, indent=2, default=str)
-                print(f"    Saved config to {config_file}")
-            except Exception as e:
-                print(f"    Error downloading config: {e}")
+            print("  Downloading run config...")
+            config_path = output_dir / "run_config.json"
+            with open(config_path, 'w') as f:
+                import json
+                json.dump(target_run.config, f, indent=2)
+            print(f"    Saved config to {config_path}")
             
             # Download run summary
+            print("  Downloading run summary...")
+            summary_path = output_dir / "run_summary.json"
+            with open(summary_path, 'w') as f:
+                import json
+                json.dump(target_run.summary, f, indent=2)
+            print(f"    Saved summary to {summary_path}")
+            
+            # Download GPU and system metrics using official API
+            print("  Downloading GPU and system metrics...")
             try:
-                print("  Downloading run summary...")
-                summary_file = output_dir / "run_summary.json"
-                with open(summary_file, 'w') as f:
-                    json.dump(run.summary, f, indent=2, default=str)
-                print(f"    Saved summary to {summary_file}")
+                system_metrics = target_run.history(stream="systemMetrics")
+                if not system_metrics.empty:
+                    system_metrics_path = output_dir / "gpu_system_metrics.csv"
+                    system_metrics.to_csv(system_metrics_path, index=False)
+                    print(f"    Saved {len(system_metrics)} system metric records to {system_metrics_path}")
+                    print(f"    GPU metrics columns: {[col for col in system_metrics.columns if 'gpu' in col.lower()]}")
+                else:
+                    print("    No system metrics found")
             except Exception as e:
-                print(f"    Error downloading summary: {e}")
+                print(f"    Warning: Could not download system metrics: {e}")
             
-            # Download files (including plots and other media)
-            try:
-                print("  Downloading files...")
-                files_dir = output_dir / "files"
-                files_dir.mkdir(exist_ok=True)
-                
-                for file in run.files():
-                    try:
-                        file_path = files_dir / file.name
-                        file.download(replace=True, root=str(files_dir))
-                        print(f"    Downloaded file: {file.name}")
-                    except Exception as e:
-                        print(f"    Error downloading file {file.name}: {e}")
-            except Exception as e:
-                print(f"    Error downloading files: {e}")
+            # Download files
+            print("  Downloading files...")
+            for file in target_run.files():
+                try:
+                    file_path = output_dir / file.name
+                    file.download(root=str(output_dir))
+                    print(f"    Downloaded file: {file.name}")
+                except Exception as e:
+                    print(f"    Error downloading file {file.name}: {e}")
             
-            print(f"✅ WandB data download completed for {experiment_name}")
+            print("✅ WandB data download completed for", experiment_name)
             
-        except ImportError:
-            print("Warning: wandb not available, skipping WandB data download")
         except Exception as e:
             print(f"Error downloading WandB data: {e}")
+            import traceback
+            traceback.print_exc()
 
 # from ..diffusion import UnconditionalDiffusionModel
 
