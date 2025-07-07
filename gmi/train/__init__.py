@@ -210,20 +210,9 @@ def train(
             wandb.init(project=wandb_project, config=wandb_config, mode='disabled')
             use_wandb = True  # Keep using WandB but in disabled mode
     
-    # Debug: Check GPU usage
-    print(f"DEBUG: Device being used: {device}")
-    print(f"DEBUG: CUDA available: {torch.cuda.is_available()}")
+    # Check GPU usage (silent)
     if torch.cuda.is_available():
-        print(f"DEBUG: GPU name: {torch.cuda.get_device_name(0)}")
-        print(f"DEBUG: GPU memory allocated: {torch.cuda.memory_allocated(0) / 1024**3:.2f} GB")
-        print(f"DEBUG: GPU memory cached: {torch.cuda.memory_reserved(0) / 1024**3:.2f} GB")
-    
-    # Debug: Check model device placement
-    print(f"DEBUG: train_loss_closure device: {next(train_loss_closure.parameters()).device}")
-    if val_loss_closure is not None:
-        print(f"DEBUG: val_loss_closure device: {next(val_loss_closure.parameters()).device}")
-    if test_closure is not None:
-        print(f"DEBUG: test_closure device: {next(test_closure.parameters()).device}")
+        pass  # GPU info available but not printed
     
     # Initialize EMA if enabled
     ema = ExponentialMovingAverage(train_loss_closure.parameters(), decay=ema_decay) if use_ema else None
@@ -240,6 +229,7 @@ def train(
     # Early stopping variables
     smoothed_val_loss = None
     patience_counter = 0
+    best_val_loss = float('inf')  # Initialize to infinity so any loss will be better
 
     # Trackers for loss history and evaluation metrics
     train_losses, val_losses = [], []
@@ -258,7 +248,6 @@ def train(
         train_loss_closure.train()
         train_batch_losses = []
 
-        print(f"DEBUG: Starting epoch {epoch + 1}, training iterations: {num_iterations}")
         epoch_start_time = time.time()
 
         for _ in tqdm(range(num_iterations), desc=f"Training Epoch {epoch + 1}/{num_epochs}"):
@@ -299,7 +288,6 @@ def train(
                 print(f"Training Batch Loss: {loss.item():.4f}")
         
         epoch_train_time = time.time() - epoch_start_time
-        print(f"DEBUG: Training epoch {epoch + 1} took {epoch_train_time:.2f} seconds")
         
         # Record average train loss for the epoch
         train_epoch_loss = sum(train_batch_losses) / len(train_batch_losses)
@@ -368,10 +356,6 @@ def train(
 
             # Record average validation loss
             val_epoch_loss = sum(val_batch_losses) / len(val_batch_losses)
-            
-            if save_best is not None:
-                save_best(val_epoch_loss)
-
             val_losses.append(val_epoch_loss)
 
             # Smooth the validation loss
@@ -379,46 +363,52 @@ def train(
                 smoothed_val_loss = val_epoch_loss
             else:
                 smoothed_val_loss = val_loss_smoothing * smoothed_val_loss + (1 - val_loss_smoothing) * val_epoch_loss
+            
+            # Determine which validation loss to use for early stopping and patience
+            # If val_loss_smoothing is 0, use raw validation loss; otherwise use smoothed
+            val_loss_for_tracking = val_epoch_loss if val_loss_smoothing == 0 else smoothed_val_loss
+            
+            # Update best validation loss and patience counter
+            if val_loss_for_tracking < best_val_loss - min_delta:
+                best_val_loss = val_loss_for_tracking
+                patience_counter = 0
+                # Save best model
+                if save_best is not None:
+                    save_best(val_loss_for_tracking)
+                # Update WandB summary
+                if use_wandb:
+                    wandb.run.summary["best_val_loss"] = best_val_loss
+            else:
+                patience_counter += 1
+
+            # Early stopping check
+            if early_stopping and patience_counter >= patience:
+                loss_type = "raw validation loss" if val_loss_smoothing == 0 else "smoothed validation loss"
+                print(f"Early stopping at epoch {epoch + 1} due to no improvement in {loss_type}. The {loss_type} is {val_loss_for_tracking:.4f} and the best validation loss is {best_val_loss:.4f}.")
+                break
 
             # Log validation metrics to WandB
             if use_wandb:
                 wandb.log({
                     "epoch": epoch + 1,
                     "epoch_val_loss": val_epoch_loss,
-                    "epoch_smoothed_val_loss": smoothed_val_loss
+                    "epoch_smoothed_val_loss": smoothed_val_loss,
+                    "val_loss_for_tracking": val_loss_for_tracking,
+                    "best_val_loss": best_val_loss,
+                    "patience_counter": patience_counter
                 })
 
             # Print losses if verbose
             if verbose:
-                print(f"Epoch {epoch + 1}/{num_epochs} | Train Loss: {train_epoch_loss:.4f} | Val Loss: {val_epoch_loss:.4f} | Smoothed Val Loss: {smoothed_val_loss:.4f}")
-            
-            # Early stopping logic based on smoothed validation loss
-            if epoch == 0:
-                best_val_loss = smoothed_val_loss*2
-
-            if early_stopping:
-                if smoothed_val_loss < best_val_loss - min_delta:
-                    best_val_loss = smoothed_val_loss
-                    patience_counter = 0
-                else:
-                    patience_counter += 1
-                    if patience_counter >= patience:
-                        print(f"Early stopping at epoch {epoch + 1} due to no improvement in smoothed validation loss.")
-                        break
-
-            if smoothed_val_loss < best_val_loss:
-                best_val_loss = smoothed_val_loss
-                if use_wandb:
-                    wandb.run.summary["best_smoothed_val_loss"] = best_val_loss
-                    wandb.run.summary["smoothed_val_loss"] = smoothed_val_loss
-
+                loss_type = "Raw Val Loss" if val_loss_smoothing == 0 else "Smoothed Val Loss"
+                print(f"Epoch {epoch + 1}/{num_epochs} | Train Loss: {train_epoch_loss:.4f} | Val Loss: {val_epoch_loss:.4f} | {loss_type}: {val_loss_for_tracking:.4f} | Best {loss_type}: {best_val_loss:.4f} | Patience: {patience_counter}/{patience}")
+        
         else:
             if verbose:
                 print(f"Epoch {epoch + 1}/{num_epochs} | Train Loss: {train_epoch_loss:.4f}")
         
         # Test phase
         if test_loader and test_closure is not None:
-            print(f"DEBUG: Starting test phase for epoch {epoch + 1}")
             test_start_time = time.time()
             test_closure.eval()
             test_metrics = {}
@@ -472,7 +462,6 @@ def train(
                         test_metrics['test_output'].append(test_output)
             
             test_time = time.time() - test_start_time
-            print(f"DEBUG: Test phase for epoch {epoch + 1} took {test_time:.2f} seconds")
             
             # Log averaged metrics for the epoch (in addition to per-iteration metrics)
             if use_wandb and test_metrics:

@@ -26,8 +26,8 @@ RUN pip install torch torchvision torchaudio --index-url https://download.pytorc
 
 ARG USER_ID=1000
 ARG GROUP_ID=1000
-RUN groupadd -g $GROUP_ID gmi_user && \
-    useradd -u $USER_ID -g $GROUP_ID -m -s /bin/bash gmi_user
+RUN groupadd -o -g $GROUP_ID -f gmi_user && \
+    useradd -o -u $USER_ID -g $GROUP_ID -m -s /bin/bash gmi_user
 
 # Create gmi_base directory and set ownership
 RUN mkdir -p /gmi_base && chown gmi_user:gmi_user /gmi_base

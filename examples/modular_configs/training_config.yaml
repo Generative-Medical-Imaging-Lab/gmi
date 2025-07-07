@@ -38,17 +38,19 @@ image_reconstructor:
 # Training parameters
 training:
   # Training for convergence
-  num_epochs: 1000  # Full convergence-based training
+  num_epochs: 1000  # Reduced for quick testing
   num_iterations_train: 100  # Reduced for speed
+  num_iterations_val: 10  # Increased for more stable validation loss
+  num_iterations_test: 1  # Increased for better test evaluation
   final_test_iterations: 'all'  # Run final test on full test dataset
-  learning_rate: 0.0001  # Reduced to 1e-4 for better convergence
+  learning_rate: 1e-3  # Reduced to 1e-4 for better convergence
   device: "cuda"  # or "cpu"
   
   # DataLoader parameters
-  batch_size: 16  # Smaller for memory efficiency
+  batch_size: 256  # Smaller for memory efficiency
   num_workers: 2
   shuffle_train: true
-  shuffle_val: false
+  shuffle_val: true
   shuffle_test: false
   
   # Advanced training features
@@ -56,12 +58,10 @@ training:
   ema_decay: 0.999
   early_stopping: true
   patience: 50  # Increased for convergence-based early stopping
-  val_loss_smoothing: 0.95  # Increased smoothing for more stable validation loss
-  min_delta: 1e-5  # Slightly increased minimum change threshold
+  val_loss_smoothing: 0.5  # Increased smoothing for more stable validation loss
+  min_delta: 1e-6  # Slightly increased minimum change threshold
   
   # Validation and test parameters
-  num_iterations_val: 25  # Increased for more stable validation loss
-  num_iterations_test: 5  # Increased for better test evaluation
   
   # Final evaluation parameters
   final_test_iterations: 20  # Reduced for speed

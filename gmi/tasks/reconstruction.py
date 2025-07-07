@@ -299,6 +299,7 @@ class ImageReconstructionTask(nn.Module):
                                  wandb_config=None,
                                  save_checkpoints=True,
                                  experiment_name=None,
+                                 output_dir=None,
                                  epochs_per_evaluation=None,
                                  train_loss_closure=None,
                                  val_loss_closure=None,
@@ -341,6 +342,7 @@ class ImageReconstructionTask(nn.Module):
             wandb_config: WandB configuration
             save_checkpoints: Whether to save model checkpoints
             experiment_name: Name for the experiment (used for saving outputs)
+            output_dir: Output directory for saving model checkpoints and logs
             epochs_per_evaluation: Run evaluation every N epochs
             train_loss_closure: Custom training loss closure (default: MSE loss)
             val_loss_closure: Custom validation loss closure (default: same as train)
@@ -386,7 +388,7 @@ class ImageReconstructionTask(nn.Module):
             test_plot_save_dir = None
             if experiment_name:
                 # Create output directory for plots
-                output_dir = Path(f"gmi_data/outputs/{experiment_name}")
+                output_dir = Path(output_dir) if output_dir else Path(f"gmi_data/outputs/{experiment_name}")
                 output_dir.mkdir(parents=True, exist_ok=True)
                 test_plot_save_dir = output_dir / "test_plots"
                 test_plot_save_dir.mkdir(exist_ok=True)
@@ -404,7 +406,7 @@ class ImageReconstructionTask(nn.Module):
         model_to_save = None
         if save_checkpoints and experiment_name:
             # Create output directory
-            output_dir = Path(f"gmi_data/outputs/{experiment_name}")
+            output_dir = Path(output_dir) if output_dir else Path(f"gmi_data/outputs/{experiment_name}")
             output_dir.mkdir(parents=True, exist_ok=True)
             save_best_model_path = output_dir / "best_model.pth"
             model_to_save = self.image_reconstructor
@@ -901,6 +903,7 @@ class ImageReconstructionTask(nn.Module):
             if save_best_model_path is not None:
                 output_dir = Path(save_best_model_path).parent / "wandb_data"
             else:
+                # Fallback to default location if no save path provided
                 output_dir = Path(f"gmi_data/outputs/{experiment_name}/wandb_data")
             output_dir.mkdir(parents=True, exist_ok=True)
             
