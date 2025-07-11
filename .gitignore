@@ -174,13 +174,3 @@ cython_debug/
 # WandB logs
 wandb/
 
-# text files
-*.txt
-*.md
-*.pdf
-*.docx
-*.doc
-*.xls
-*.xlsx
-*.csv
-*.json
