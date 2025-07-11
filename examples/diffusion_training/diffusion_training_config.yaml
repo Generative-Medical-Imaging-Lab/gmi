@@ -1,0 +1,92 @@
+# Diffusion Model Training Configuration
+# This file demonstrates how to configure a DiffusionModel training using YAML
+
+# Experiment configuration
+experiment_name: "bloodmnist_diffusion_unconditional"
+
+# Dataset configuration
+train_dataset:
+  class: gmi.datasets.MedMNIST
+  params:
+    dataset_name: "BloodMNIST"
+    size: 28
+    split: "train"
+    images_only: true
+
+validation_dataset:
+  class: gmi.datasets.MedMNIST
+  params:
+    dataset_name: "BloodMNIST"
+    size: 28
+    split: "val"
+    images_only: true
+
+test_dataset:
+  class: gmi.datasets.MedMNIST
+  params:
+    dataset_name: "BloodMNIST"
+    size: 28
+    split: "test"
+    images_only: true
+
+# Diffusion backbone configuration
+diffusion_backbone:
+  class: gmi.network.DiffusersUnet2D_Size28
+  params:
+    in_channels: 3
+    out_channels: 3
+    layers_per_block: 2
+    block_out_channels: [8, 16, 32]
+    down_block_types: ["DownBlock2D", "DownBlock2D", "DownBlock2D"]
+    up_block_types: ["UpBlock2D", "UpBlock2D", "UpBlock2D"]
+
+# Training configuration
+training:
+  # Basic training parameters
+  num_epochs: 100
+  num_iterations_train: 100  # iterations per epoch
+  learning_rate: 0.001
+  device: "cuda"  # or "cpu"
+  
+  # DataLoader parameters
+  batch_size: 32
+  num_workers: 2
+  shuffle_train: true
+  shuffle_val: true
+  shuffle_test: false
+  
+  # Advanced training features
+  use_ema: true
+  ema_decay: 0.999
+  early_stopping: true
+  patience: 20
+  val_loss_smoothing: 0.9
+  min_delta: 1e-6
+  
+  # Validation and test parameters
+  num_iterations_val: 10
+  num_iterations_test: 5
+  
+  # Final evaluation parameters
+  final_test_iterations: 20
+  
+  # Test plotting parameters
+  test_plot_vmin: 0
+  test_plot_vmax: 1
+  test_save_plots: true
+  
+  # Reverse process sampling parameters
+  reverse_t_start: 1.0
+  reverse_t_end: 0.0
+  reverse_spacing: "linear"  # or "logarithmic"
+  reverse_sampler: "euler"   # or "heun"
+  reverse_timesteps: 50
+  
+  # Logging and monitoring
+  verbose: true
+  very_verbose: false
+  wandb_project: "gmi-diffusion-training"  # Set to null to disable WandB
+  wandb_config: null  # Additional WandB config
+  
+  # Model saving
+  save_checkpoints: true 
