@@ -87,6 +87,45 @@ def train_image_reconstructor(config, device, experiment_name, train_dataset, va
         image_reconstructor_path=image_reconstructor
     )
 
+# Add the train_diffusion_model command
+@cli.command()
+@click.argument('config', type=click.Path(exists=True))
+@click.option('--device', type=str, default=None, help='Device to use (default: auto-detect)')
+@click.option('--experiment-name', type=str, default=None, help='Override experiment name')
+@click.option('--train-dataset', type=click.Path(exists=True), help='Override train dataset config file')
+@click.option('--validation-dataset', type=click.Path(exists=True), help='Override validation dataset config file')
+@click.option('--test-dataset', type=click.Path(exists=True), help='Override test dataset config file')
+@click.option('--diffusion-backbone', type=click.Path(exists=True), help='Override diffusion backbone config file')
+def train_diffusion_model(config, device, experiment_name, train_dataset, validation_dataset, test_dataset, diffusion_backbone):
+    """
+    🚀 Train a diffusion model from YAML configuration.
+    
+    This command loads a YAML configuration file and trains a diffusion model
+    using the specified dataset and diffusion backbone.
+    
+    The config file can contain defaults for all components, which can be overridden
+    using the optional component-specific config files.
+    
+    \b
+    Examples:
+        gmi train-diffusion-model config.yaml
+        gmi train-diffusion-model config.yaml --device cuda
+        gmi train-diffusion-model config.yaml --experiment-name my_experiment
+        gmi train-diffusion-model config.yaml --train-dataset datasets/mnist_train.yaml --diffusion-backbone networks/unet.yaml
+    """
+    from gmi.commands.train_diffusion_model import train_diffusion_model_from_configs
+    
+    # Call the command function with all arguments
+    train_diffusion_model_from_configs(
+        config_paths=[config],
+        device=device,
+        experiment_name=experiment_name,
+        train_dataset_path=train_dataset,
+        validation_dataset_path=validation_dataset,
+        test_dataset_path=test_dataset,
+        diffusion_backbone_path=diffusion_backbone
+    )
+
 # Add the evaluate_image_reconstructor command
 @cli.command()
 @click.argument('config', type=click.Path(exists=True))
