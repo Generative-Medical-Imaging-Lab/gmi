@@ -5,7 +5,6 @@ from .core import GMI_Dataset
 import matplotlib.pyplot as plt
 from typing import Optional
 import numpy as np
-from pathlib import Path
 from PIL import Image
 import random
 
@@ -21,11 +20,6 @@ class MedMNIST(GMI_Dataset):
                  size=None,
                  mmap_mode=None,
                  images_only=False):
-        # Set default root to GMI dataset path if not provided
-        if root is None:
-            root = f'./gmi_data/datasets/MedMNIST/{dataset_name}'
-        Path(root).mkdir(parents=True, exist_ok=True)
-
         # Map dataset_name to medmnist class
         medmnist_map = {
             'PathMNIST': medmnist.PathMNIST,
@@ -74,7 +68,6 @@ class MedMNIST(GMI_Dataset):
         """Detect image shape, label shape, and number of unique classes."""
         # Get a sample to detect shapes
         sample_data, sample_label = self.medmnist_dataset[0]
-        print(f"[DEBUG] sample_label type: {type(sample_label)}, value: {sample_label}")
         
         # Convert PIL image to tensor and detect image shape
         if isinstance(sample_data, Image.Image):
@@ -90,14 +83,12 @@ class MedMNIST(GMI_Dataset):
             self.label_shape = sample_label.shape
         else:
             self.label_shape = (1,) if isinstance(sample_label, (int, float)) else (len(sample_label),)
-        print(f"[DEBUG] label_shape: {self.label_shape}")
         
         # Handle multi-label vs categorical
         if isinstance(sample_label, np.ndarray) and len(sample_label.shape) == 1 and sample_label.shape[0] > 1:
             # Multi-label dataset
             self.num_classes = sample_label.shape[0]
             self.is_multi_label = True
-            print(f"[DEBUG] Detected multi-label dataset with {self.num_classes} conditions.")
         else:
             # Categorical dataset
             sample_size = min(1000, len(self.medmnist_dataset))
@@ -116,9 +107,6 @@ class MedMNIST(GMI_Dataset):
                     _, label = self.medmnist_dataset[i]
                     labels.append(label)
             
-            print(f"[DEBUG] Sampled {len(labels)} labels from dataset of size {len(self.medmnist_dataset)}")
-            print(f"[DEBUG] First 10 sampled labels: {labels[:10]}")
-            
             if isinstance(labels[0], np.ndarray):
                 # Extract the actual class values from numpy arrays
                 if labels[0].shape == (1,):
@@ -134,7 +122,6 @@ class MedMNIST(GMI_Dataset):
             self.num_classes = len(unique_labels)
             self.unique_labels = unique_labels
             self.is_multi_label = False
-            print(f"[DEBUG] Detected categorical dataset with {self.num_classes} classes: {unique_labels}")
         
         print(f"📊 {self.dataset_name} ({self.split}): {len(self.medmnist_dataset)} samples, "
               f"image shape: {self.image_shape}, label shape: {self.label_shape}, "
@@ -201,13 +188,11 @@ class MedMNIST(GMI_Dataset):
                     if len(active_labels) == 0:  # Healthy case (all zeros)
                         if len(condition_samples[0]) < num_samples_per_class:
                             condition_samples[0].append(data)
-                            print(f"Found healthy sample: {label}")
                     
                     elif len(active_labels) == 1:  # Exactly one condition active
                         condition_idx = active_labels[0] + 1  # Shift by 1 to make room for healthy
                         if len(condition_samples[condition_idx]) < num_samples_per_class:
                             condition_samples[condition_idx].append(data)
-                            print(f"Found one-hot sample for condition {condition_idx-1}: {label}")
                 
             except Exception as e:
                 print(f"Warning: Could not load sample {idx}: {e}")
