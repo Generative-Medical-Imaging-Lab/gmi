@@ -13,6 +13,9 @@ RUN pip install --upgrade pip
 # Install PyTorch 12.8 with CUDA support
 RUN pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
 
+# Cache buster for user creation - rebuild from here if UID/GID changes
+ARG CACHEBUST=1
+
 # Create a non-root user with the same UID/GID as the host user
 # If not specified, use 1000 as default user id and group id
 # 
