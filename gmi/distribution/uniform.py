@@ -32,7 +32,7 @@ class UniformDistribution(Distribution):
         self.height = 1.0 / (high - low)
 
     def sample(self, batch_size):
-        return torch.rand(batch_size, 1, device=self.low.device) * (self.high - self.low) + self.low
+        return torch.rand(batch_size, device=self.low.device) * (self.high - self.low) + self.low
     
     def log_prob(self, x):
         log_height = torch.log(self.height)
