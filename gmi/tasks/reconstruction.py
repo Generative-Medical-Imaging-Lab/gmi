@@ -458,7 +458,148 @@ class ImageReconstructionTask(nn.Module):
             except Exception as e:
                 print(f"Warning: Failed to download WandB data: {e}")
         
+        # Run final evaluation if test_data is provided and final_test_iterations is set
+        if test_data is not None and final_test_iterations is not None:
+            print(f"\nRunning final evaluation with {final_test_iterations} iterations...")
+            final_eval_output_dir = None
+            if save_best_model_path is not None:
+                final_eval_output_dir = Path(save_best_model_path).parent
+            elif output_dir is not None:
+                final_eval_output_dir = Path(output_dir)
+            
+            try:
+                final_eval_summary = self.run_final_evaluation(
+                    test_data=test_data,
+                    output_dir=str(final_eval_output_dir) if final_eval_output_dir else None,
+                    experiment_name=experiment_name,
+                    verbose=verbose
+                )
+                print("Final evaluation completed successfully!")
+            except Exception as e:
+                print(f"Warning: Final evaluation failed: {e}")
+        
         return train_losses, val_losses, eval_metrics
+
+    def run_final_evaluation(self, test_data, output_dir=None, experiment_name=None, verbose=True):
+        """
+        Run final evaluation on the full test dataset and save per-sample metrics.
+        
+        Args:
+            test_data: Test dataset to evaluate on
+            output_dir: Output directory for saving results
+            experiment_name: Experiment name for file naming
+            verbose: Whether to print progress
+            
+        Returns:
+            Dictionary containing summary statistics
+        """
+        import numpy as np
+        import csv
+        from pathlib import Path
+        from tqdm import tqdm
+        import torch.utils.data
+        
+        # Set device
+        device = self.device if self.device is not None else ('cuda' if torch.cuda.is_available() else 'cpu')
+        
+        # Create DataLoader if needed
+        if isinstance(test_data, torch.utils.data.Dataset):
+            test_loader = torch.utils.data.DataLoader(test_data, batch_size=1, shuffle=False, num_workers=4)
+        elif isinstance(test_data, torch.utils.data.DataLoader):
+            test_loader = test_data
+        else:
+            raise ValueError("test_data must be a PyTorch Dataset or DataLoader")
+        
+        print(f"\nRunning final evaluation on {len(test_loader)} samples...")
+        
+        per_sample_metrics = []
+        
+        # Put models in eval mode
+        if hasattr(self.image_reconstructor, 'module') and hasattr(self.image_reconstructor.module, 'eval'):
+            self.image_reconstructor.module.eval()
+        elif hasattr(self.image_reconstructor, 'eval'):
+            self.image_reconstructor.eval()
+            
+        if hasattr(self.measurement_simulator, 'module') and hasattr(self.measurement_simulator.module, 'eval'):
+            self.measurement_simulator.module.eval()
+        elif hasattr(self.measurement_simulator, 'eval'):
+            self.measurement_simulator.eval()
+        
+        with torch.no_grad():
+            for i, batch_data in enumerate(tqdm(test_loader, desc="Final Evaluation")):
+                # Handle different data formats
+                if isinstance(batch_data, (tuple, list)):
+                    images = batch_data[0].to(device) if isinstance(batch_data[0], torch.Tensor) else batch_data[0]
+                elif isinstance(batch_data, torch.Tensor):
+                    images = batch_data.to(device)
+                else:
+                    continue
+                
+                # Create measurements and reconstructions
+                measurements = self.sample_measurements_given_images(1, images)
+                if measurements.dim() > images.dim():
+                    measurements = measurements[0]
+                    
+                reconstructions = self.sample_reconstructions_given_measurements(1, measurements)
+                if reconstructions.dim() > images.dim():
+                    reconstructions = reconstructions[0]
+                
+                # Compute metrics for each sample in the batch
+                for j in range(images.shape[0]):
+                    img = images[j:j+1]
+                    rec = reconstructions[j:j+1]
+                    
+                    # Compute metrics using the same methods as TestClosure
+                    rmse = self._compute_rmse(rec, img)
+                    psnr = self._compute_psnr(rec, img)
+                    ssim = self._compute_ssim(rec, img)
+                    lpips = self._compute_lpips(rec, img)
+                    
+                    per_sample_metrics.append({
+                        'index': len(per_sample_metrics),
+                        'rmse': rmse,
+                        'psnr': psnr,
+                        'ssim': ssim,
+                        'lpips': lpips
+                    })
+        
+        # Save per-sample metrics to CSV
+        if output_dir is not None:
+            output_path = Path(output_dir)
+            output_path.mkdir(parents=True, exist_ok=True)
+            
+            per_sample_csv = output_path / "final_evaluation_metrics_per_sample.csv"
+            with open(per_sample_csv, 'w', newline='') as csvfile:
+                writer = csv.DictWriter(csvfile, fieldnames=['index', 'rmse', 'psnr', 'ssim', 'lpips'])
+                writer.writeheader()
+                for row in per_sample_metrics:
+                    writer.writerow(row)
+            
+            if verbose:
+                print(f"Per-sample metrics saved to: {per_sample_csv}")
+        
+        # Compute summary statistics
+        summary_stats = {}
+        if per_sample_metrics:
+            for metric in ['rmse', 'psnr', 'ssim', 'lpips']:
+                values = np.array([row[metric] for row in per_sample_metrics])
+                summary_stats[f'{metric}_mean'] = float(np.mean(values))
+                summary_stats[f'{metric}_std'] = float(np.std(values))
+                summary_stats[f'{metric}_min'] = float(np.min(values))
+                summary_stats[f'{metric}_max'] = float(np.max(values))
+        
+        # Print summary if verbose
+        if verbose and per_sample_metrics:
+            print(f"\nFinal evaluation summary:")
+            for metric in ['rmse', 'psnr', 'ssim', 'lpips']:
+                values = [row[metric] for row in per_sample_metrics]
+                print(f"  {metric}: mean={np.mean(values):.4f}, std={np.std(values):.4f}, min={np.min(values):.4f}, max={np.max(values):.4f}")
+        
+        return summary_stats
+
+    def _compute_rmse(self, pred, target):
+        """Compute Root Mean Square Error."""
+        return torch.sqrt(F.mse_loss(pred, target)).item()
 
     def _create_evaluation_function(self, test_data, batch_size):
         """
