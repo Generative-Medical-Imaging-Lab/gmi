@@ -1,0 +1,81 @@
+# Training configuration for modular diffusion experiments
+# Optimized for training diffusion models
+
+# Experiment name (used for output directories and logging)
+experiment_name: "default_mnist_diffusion"
+
+# Default components (can be overridden by command line arguments)
+train_dataset:
+  class: gmi.datasets.MNIST
+  params:
+    train: true
+    images_only: true
+
+validation_dataset:
+  class: gmi.datasets.MNIST
+  params:
+    train: false  # Use test split for validation
+    images_only: true
+
+test_dataset:
+  class: gmi.datasets.MNIST
+  params:
+    train: false  # Use test split for test
+    images_only: true
+
+diffusion_backbone:
+  class: gmi.network.DiffusersUnet2D_Size28
+  params:
+    in_channels: 1
+    out_channels: 1
+    layers_per_block: 2
+    block_out_channels: [8, 16, 32]
+    down_block_types: ["DownBlock2D", "DownBlock2D", "DownBlock2D"]
+    up_block_types: ["UpBlock2D", "UpBlock2D", "UpBlock2D"]
+
+# Training parameters
+training:
+  # Training for convergence
+  num_epochs: 500  # Diffusion models typically need more epochs
+  num_iterations_train: 100  # Reduced for speed
+  num_iterations_val: 10  # Increased for more stable validation loss
+  num_iterations_test: 5  # Increased for better test evaluation
+  final_test_iterations: 20  # Run final test on subset of test dataset
+  learning_rate: 1e-4  # Lower learning rate for diffusion models
+  device: "cuda"  # or "cpu"
+  
+  # DataLoader parameters
+  batch_size: 64  # Smaller for memory efficiency
+  num_workers: 2
+  shuffle_train: true
+  shuffle_val: true
+  shuffle_test: false
+  
+  # Advanced training features
+  use_ema: true
+  ema_decay: 0.999
+  early_stopping: true
+  patience: 50  # Increased for convergence-based early stopping
+  val_loss_smoothing: 0.9  # Smoothing for stable validation loss
+  min_delta: 1e-6  # Minimum change threshold
+  
+  # Test plotting parameters
+  test_plot_vmin: 0
+  test_plot_vmax: 1
+  test_save_plots: true
+  
+  # Reverse process sampling parameters
+  reverse_t_start: 1.0
+  reverse_t_end: 0.0
+  reverse_spacing: "linear"  # or "logarithmic"
+  reverse_sampler: "euler"   # or "heun"
+  reverse_timesteps: 50
+  
+  # Logging and monitoring
+  verbose: true
+  very_verbose: false
+  wandb_project: "gmi-diffusion-modular-studies"  # Enable WandB logging
+  wandb_config: null
+  
+  # Model saving
+  save_checkpoints: true 
