@@ -188,3 +188,52 @@ class DiagonalLinearOperator(SymmetricLinearOperator, InvertibleLinearOperator):
                 The result of applying the conjugate transpose of the linear operator to the input tensor.
         """
         return self.conjugate(y)
+
+    def transpose_LinearOperator(self):
+        """
+        This method returns the transpose linear operator.
+        
+        For diagonal operators, transpose equals the operator itself (diagonal matrices are symmetric).
+        
+        returns:
+            result: DiagonalLinearOperator
+                The transpose linear operator (same as self).
+        """
+        return DiagonalLinearOperator(self.diagonal_vector)
+
+    def conjugate_LinearOperator(self):
+        """
+        This method returns the conjugate linear operator.
+        
+        For diagonal operators, conjugate is the conjugate of each diagonal element.
+        
+        returns:
+            result: DiagonalLinearOperator
+                The conjugate linear operator.
+        """
+        return DiagonalLinearOperator(torch.conj(self.diagonal_vector))
+
+    def conjugate_transpose_LinearOperator(self):
+        """
+        This method returns the conjugate transpose linear operator.
+        
+        For diagonal operators, conjugate transpose equals conjugate.
+        
+        returns:
+            result: DiagonalLinearOperator
+                The conjugate transpose linear operator.
+        """
+        return self.conjugate_LinearOperator()
+
+    def __matmul__(self, other):
+        """
+        This method implements the @ operator for matrix multiplication.
+        
+        parameters:
+            other: LinearOperator or torch.Tensor
+                The other linear operator to multiply, or a tensor.
+        returns:
+            result: LinearOperator or torch.Tensor
+                The product of the two linear operators, or the result of applying to tensor.
+        """
+        return self.mat_mul(other)

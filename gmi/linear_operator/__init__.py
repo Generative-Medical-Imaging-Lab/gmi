@@ -15,11 +15,24 @@ from .conjugate_transpose import ConjugateTransposeLinearOperator
 from .inverse import InverseLinearOperator
 from .composite import CompositeLinearOperator
 from .invertible_composite import InvertibleCompositeLinearOperator
-# from .eigen_decomposed import EigenDecomposedLinearOperator
-# from .singular_value_decomposed import SingularValueDecomposedLinearOperator
-# from .fourier_transform import FourierTransform
-# from .fourier_linear_operator import FourierLinearOperator
-# from .fourier_convolution import FourierConvolution
+from .eigen_decomposition import EigenDecompositionLinearOperator
+from .singular_value_decomposition import SingularValueDecompositionLinearOperator
+from .fourier_transform import FourierTransform
+from .fourier_linear_operator import FourierLinearOperator
+from .fourier_convolution import FourierConvolution
+
+# Sparse operators
+from .sparse_col import ColSparseLinearOperator
+from .sparse_row import RowSparseLinearOperator
+
+# Interpolators
+from .interpolator_nearest import NearestNeighborInterpolator
+from .interpolator_bilinear import BilinearInterpolator
+from .interpolator_lanczos import LanczosInterpolator
+
+# Polar resampler
+from .polar_resampler import PolarCoordinateResampler
+
 
 # Re-export all classes
 __all__ = [
@@ -39,9 +52,15 @@ __all__ = [
     'InverseLinearOperator',
     'CompositeLinearOperator',
     'InvertibleCompositeLinearOperator',
-    # 'EigenDecomposedLinearOperator',
-    # 'SingularValueDecomposedLinearOperator',
-    # 'FourierTransform',
-    # 'FourierLinearOperator',
-    # 'FourierConvolution',
+    'EigenDecompositionLinearOperator',
+    'SingularValueDecompositionLinearOperator',
+    'FourierTransform',
+    'FourierLinearOperator',
+    'FourierConvolution',
+    'ColSparseLinearOperator',
+    'RowSparseLinearOperator',
+    'NearestNeighborInterpolator',
+    'BilinearInterpolator',
+    'LanczosInterpolator',
+    'PolarCoordinateResampler',
 ] 

@@ -140,4 +140,110 @@ class TestDiagonalLinearOperator:
         assert op_single.is_invertible, "Single non-zero element should be invertible"
         
         op_single_zero = DiagonalLinearOperator(diagonal_vector=torch.tensor([0.0]))
-        assert not op_single_zero.is_invertible, "Single zero element should not be invertible" 
+        assert not op_single_zero.is_invertible, "Single zero element should not be invertible"
+
+    def test_transpose_LinearOperator(self):
+        """Test the transpose_LinearOperator method."""
+        # Test with real diagonal
+        diagonal = torch.tensor([1.0, 2.0, 3.0])
+        op = DiagonalLinearOperator(diagonal_vector=diagonal)
+        transpose_op = op.transpose_LinearOperator()
+        
+        assert isinstance(transpose_op, DiagonalLinearOperator), "Should return DiagonalLinearOperator"
+        assert torch.allclose(transpose_op.diagonal_vector, diagonal), "Transpose should preserve diagonal values"
+        
+        # Test with complex diagonal
+        diagonal_complex = torch.tensor([1.0 + 2.0j, 3.0 + 4.0j])
+        op_complex = DiagonalLinearOperator(diagonal_vector=diagonal_complex)
+        transpose_op_complex = op_complex.transpose_LinearOperator()
+        
+        assert isinstance(transpose_op_complex, DiagonalLinearOperator), "Should return DiagonalLinearOperator"
+        assert torch.allclose(transpose_op_complex.diagonal_vector, diagonal_complex), "Transpose should preserve complex diagonal values"
+        
+        # Test that transpose operator works correctly
+        x = torch.tensor([1.0, 2.0, 3.0])
+        y_original = op.forward(x)
+        y_transpose = transpose_op.forward(x)
+        assert torch.allclose(y_original, y_transpose), "Transpose operator should give same result as original"
+
+    def test_conjugate_LinearOperator(self):
+        """Test the conjugate_LinearOperator method."""
+        # Test with real diagonal
+        diagonal = torch.tensor([1.0, 2.0, 3.0])
+        op = DiagonalLinearOperator(diagonal_vector=diagonal)
+        conjugate_op = op.conjugate_LinearOperator()
+        
+        assert isinstance(conjugate_op, DiagonalLinearOperator), "Should return DiagonalLinearOperator"
+        assert torch.allclose(conjugate_op.diagonal_vector, diagonal), "Conjugate of real diagonal should be unchanged"
+        
+        # Test with complex diagonal
+        diagonal_complex = torch.tensor([1.0 + 2.0j, 3.0 + 4.0j])
+        op_complex = DiagonalLinearOperator(diagonal_vector=diagonal_complex)
+        conjugate_op_complex = op_complex.conjugate_LinearOperator()
+        
+        assert isinstance(conjugate_op_complex, DiagonalLinearOperator), "Should return DiagonalLinearOperator"
+        expected_conjugate = torch.conj(diagonal_complex)
+        assert torch.allclose(conjugate_op_complex.diagonal_vector, expected_conjugate), "Conjugate should conjugate complex diagonal values"
+        
+        # Test that conjugate operator works correctly
+        x = torch.tensor([1.0, 2.0])
+        y_original = op_complex.forward(x)
+        y_conjugate = conjugate_op_complex.forward(x)
+        expected_conjugate_result = torch.conj(y_original)
+        assert torch.allclose(y_conjugate, expected_conjugate_result), "Conjugate operator should conjugate the result"
+
+    def test_conjugate_transpose_LinearOperator(self):
+        """Test the conjugate_transpose_LinearOperator method."""
+        # Test with real diagonal
+        diagonal = torch.tensor([1.0, 2.0, 3.0])
+        op = DiagonalLinearOperator(diagonal_vector=diagonal)
+        conj_transpose_op = op.conjugate_transpose_LinearOperator()
+        
+        assert isinstance(conj_transpose_op, DiagonalLinearOperator), "Should return DiagonalLinearOperator"
+        assert torch.allclose(conj_transpose_op.diagonal_vector, diagonal), "Conjugate transpose of real diagonal should be unchanged"
+        
+        # Test with complex diagonal
+        diagonal_complex = torch.tensor([1.0 + 2.0j, 3.0 + 4.0j])
+        op_complex = DiagonalLinearOperator(diagonal_vector=diagonal_complex)
+        conj_transpose_op_complex = op_complex.conjugate_transpose_LinearOperator()
+        
+        assert isinstance(conj_transpose_op_complex, DiagonalLinearOperator), "Should return DiagonalLinearOperator"
+        expected_conj_transpose = torch.conj(diagonal_complex)
+        assert torch.allclose(conj_transpose_op_complex.diagonal_vector, expected_conj_transpose), "Conjugate transpose should conjugate complex diagonal values"
+        
+        # Test that conjugate transpose operator works correctly
+        x = torch.tensor([1.0, 2.0])
+        y_original = op_complex.forward(x)
+        y_conj_transpose = conj_transpose_op_complex.forward(x)
+        expected_conj_transpose_result = torch.conj(y_original)
+        assert torch.allclose(y_conj_transpose, expected_conj_transpose_result), "Conjugate transpose operator should conjugate the result"
+
+    def test_operator_chain_operations(self, sample_vector_2):
+        """Test chaining of the new LinearOperator methods."""
+        diagonal = torch.tensor([2.0, 3.0])
+        op = DiagonalLinearOperator(diagonal_vector=diagonal)
+        x = sample_vector_2
+        
+        # Test transpose -> inverse
+        transpose_op = op.transpose_LinearOperator()
+        inv_transpose_op = transpose_op.inverse_LinearOperator()
+        assert isinstance(inv_transpose_op, DiagonalLinearOperator), "Should return DiagonalLinearOperator"
+        expected_inv = 1.0 / diagonal
+        assert torch.allclose(inv_transpose_op.diagonal_vector, expected_inv), "Inverse of transpose should be 1/diagonal"
+        
+        # Test inverse -> transpose
+        inv_op = op.inverse_LinearOperator()
+        transpose_inv_op = inv_op.transpose_LinearOperator()
+        assert isinstance(transpose_inv_op, DiagonalLinearOperator), "Should return DiagonalLinearOperator"
+        assert torch.allclose(transpose_inv_op.diagonal_vector, expected_inv), "Transpose of inverse should be 1/diagonal"
+        
+        # Test conjugate -> inverse
+        conjugate_op = op.conjugate_LinearOperator()
+        inv_conjugate_op = conjugate_op.inverse_LinearOperator()
+        assert isinstance(inv_conjugate_op, DiagonalLinearOperator), "Should return DiagonalLinearOperator"
+        assert torch.allclose(inv_conjugate_op.diagonal_vector, expected_inv), "Inverse of conjugate should be 1/diagonal"
+        
+        # Test that operations commute correctly
+        y1 = inv_transpose_op.forward(x)
+        y2 = transpose_inv_op.forward(x)
+        assert torch.allclose(y1, y2), "Inverse of transpose should equal transpose of inverse" 

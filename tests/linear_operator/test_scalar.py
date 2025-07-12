@@ -199,4 +199,100 @@ class TestScalarLinearOperator:
         # Test with zero scalar
         op = ScalarLinearOperator(scalar=0.0)
         y = op.forward(x)
-        assert torch.allclose(y, torch.zeros_like(x)) 
+        assert torch.allclose(y, torch.zeros_like(x))
+
+    def test_transpose_LinearOperator(self):
+        """Test the transpose_LinearOperator method."""
+        # Test with real scalar
+        op = ScalarLinearOperator(scalar=2.0)
+        transpose_op = op.transpose_LinearOperator()
+        
+        assert isinstance(transpose_op, ScalarLinearOperator), "Should return ScalarLinearOperator"
+        assert torch.allclose(transpose_op.scalar, torch.tensor(2.0)), "Transpose should preserve scalar value"
+        
+        # Test with complex scalar
+        op_complex = ScalarLinearOperator(scalar=1.0 + 2.0j)
+        transpose_op_complex = op_complex.transpose_LinearOperator()
+        
+        assert isinstance(transpose_op_complex, ScalarLinearOperator), "Should return ScalarLinearOperator"
+        assert torch.allclose(transpose_op_complex.scalar, torch.tensor(1.0 + 2.0j)), "Transpose should preserve complex scalar value"
+        
+        # Test that transpose operator works correctly
+        x = torch.tensor([1.0, 2.0, 3.0])
+        y_original = op.forward(x)
+        y_transpose = transpose_op.forward(x)
+        assert torch.allclose(y_original, y_transpose), "Transpose operator should give same result as original"
+
+    def test_conjugate_LinearOperator(self):
+        """Test the conjugate_LinearOperator method."""
+        # Test with real scalar
+        op = ScalarLinearOperator(scalar=2.0)
+        conjugate_op = op.conjugate_LinearOperator()
+        
+        assert isinstance(conjugate_op, ScalarLinearOperator), "Should return ScalarLinearOperator"
+        assert torch.allclose(conjugate_op.scalar, torch.tensor(2.0)), "Conjugate of real scalar should be unchanged"
+        
+        # Test with complex scalar
+        op_complex = ScalarLinearOperator(scalar=1.0 + 2.0j)
+        conjugate_op_complex = op_complex.conjugate_LinearOperator()
+        
+        assert isinstance(conjugate_op_complex, ScalarLinearOperator), "Should return ScalarLinearOperator"
+        assert torch.allclose(conjugate_op_complex.scalar, torch.tensor(1.0 - 2.0j)), "Conjugate should conjugate complex scalar"
+        
+        # Test that conjugate operator works correctly
+        x = torch.tensor([1.0, 2.0, 3.0])
+        y_original = op_complex.forward(x)
+        y_conjugate = conjugate_op_complex.forward(x)
+        expected_conjugate = torch.conj(y_original)
+        assert torch.allclose(y_conjugate, expected_conjugate), "Conjugate operator should conjugate the result"
+
+    def test_conjugate_transpose_LinearOperator(self):
+        """Test the conjugate_transpose_LinearOperator method."""
+        # Test with real scalar
+        op = ScalarLinearOperator(scalar=2.0)
+        conj_transpose_op = op.conjugate_transpose_LinearOperator()
+        
+        assert isinstance(conj_transpose_op, ScalarLinearOperator), "Should return ScalarLinearOperator"
+        assert torch.allclose(conj_transpose_op.scalar, torch.tensor(2.0)), "Conjugate transpose of real scalar should be unchanged"
+        
+        # Test with complex scalar
+        op_complex = ScalarLinearOperator(scalar=1.0 + 2.0j)
+        conj_transpose_op_complex = op_complex.conjugate_transpose_LinearOperator()
+        
+        assert isinstance(conj_transpose_op_complex, ScalarLinearOperator), "Should return ScalarLinearOperator"
+        assert torch.allclose(conj_transpose_op_complex.scalar, torch.tensor(1.0 - 2.0j)), "Conjugate transpose should conjugate complex scalar"
+        
+        # Test that conjugate transpose operator works correctly
+        x = torch.tensor([1.0, 2.0, 3.0])
+        y_original = op_complex.forward(x)
+        y_conj_transpose = conj_transpose_op_complex.forward(x)
+        expected_conj_transpose = torch.conj(y_original)
+        assert torch.allclose(y_conj_transpose, expected_conj_transpose), "Conjugate transpose operator should conjugate the result"
+
+    def test_operator_chain_operations(self, sample_vector_2):
+        """Test chaining of the new LinearOperator methods."""
+        op = ScalarLinearOperator(scalar=2.0)
+        x = sample_vector_2
+        
+        # Test transpose -> inverse
+        transpose_op = op.transpose_LinearOperator()
+        inv_transpose_op = transpose_op.inverse_LinearOperator()
+        assert isinstance(inv_transpose_op, ScalarLinearOperator), "Should return ScalarLinearOperator"
+        assert torch.allclose(inv_transpose_op.scalar, torch.tensor(0.5)), "Inverse of transpose should be 0.5"
+        
+        # Test inverse -> transpose
+        inv_op = op.inverse_LinearOperator()
+        transpose_inv_op = inv_op.transpose_LinearOperator()
+        assert isinstance(transpose_inv_op, ScalarLinearOperator), "Should return ScalarLinearOperator"
+        assert torch.allclose(transpose_inv_op.scalar, torch.tensor(0.5)), "Transpose of inverse should be 0.5"
+        
+        # Test conjugate -> inverse
+        conjugate_op = op.conjugate_LinearOperator()
+        inv_conjugate_op = conjugate_op.inverse_LinearOperator()
+        assert isinstance(inv_conjugate_op, ScalarLinearOperator), "Should return ScalarLinearOperator"
+        assert torch.allclose(inv_conjugate_op.scalar, torch.tensor(0.5)), "Inverse of conjugate should be 0.5"
+        
+        # Test that operations commute correctly
+        y1 = inv_transpose_op.forward(x)
+        y2 = transpose_inv_op.forward(x)
+        assert torch.allclose(y1, y2), "Inverse of transpose should equal transpose of inverse" 

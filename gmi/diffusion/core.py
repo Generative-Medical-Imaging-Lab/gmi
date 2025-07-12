@@ -3,7 +3,7 @@ from torch import nn
 from ..sde import LinearSDE, StandardWienerSDE
 from ..distribution import UniformDistribution
 from ..samplers import Sampler
-from ..linalg import InvertibleLinearOperator
+from ..linear_operator import InvertibleLinearOperator
 
 
 class DiffusionModel(torch.nn.Module):

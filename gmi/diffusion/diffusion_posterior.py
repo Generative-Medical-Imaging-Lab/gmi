@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 from ..sde import LinearSDE, StandardWienerSDE
-from ..linalg import DiagonalLinearOperator
+from ..linear_operator import DiagonalLinearOperator
 from ..distribution import UniformDistribution, GaussianDistribution
 from ..samplers import Sampler
 from .core import DiffusionModel

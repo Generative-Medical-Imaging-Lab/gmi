@@ -2,8 +2,8 @@
 
 import torch
 import torch
-from .core import LinearSDE
-from ..linalg import DiagonalLinearOperator
+from .linear_sde import LinearSDE
+from ..linear_operator import DiagonalLinearOperator
 
 class DiagonalSDE(LinearSDE):
     def __init__(self, signal_scale, noise_variance, signal_scale_prime=None, noise_variance_prime=None):

@@ -3,7 +3,7 @@ from torch import nn
 
 from .core import Distribution
 
-from ..linalg import LinearOperator, ScalarLinearOperator
+from ..linear_operator import LinearOperator, ScalarLinearOperator
 
 class GaussianDistribution(Distribution):
     def __init__(self, mu, Sigma):

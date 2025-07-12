@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 from .core import Distribution
-from ..linalg import LinearOperator, ScalarLinearOperator
+from ..linear_operator import LinearOperator, ScalarLinearOperator
 
 
 class LogNormalDistribution(Distribution):

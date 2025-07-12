@@ -2,8 +2,6 @@ import torch
 from .diagonal import DiagonalLinearOperator
 from .invertible import InvertibleLinearOperator
 
-print('DEBUG: scalar.py module loaded')
-
 class ScalarLinearOperator(DiagonalLinearOperator, InvertibleLinearOperator):
     def __init__(self, scalar):
         """
@@ -200,6 +198,19 @@ class ScalarLinearOperator(DiagonalLinearOperator, InvertibleLinearOperator):
         else:
             raise ValueError(f"Multiplication with {type(other)} not supported for ScalarLinearOperator")
     
+    def __matmul__(self, other):
+        """
+        This method implements the @ operator for matrix multiplication.
+        
+        parameters:
+            other: LinearOperator or torch.Tensor
+                The other linear operator to multiply, or a tensor.
+        returns:
+            result: LinearOperator or torch.Tensor
+                The product of the two linear operators, or the result of applying to tensor.
+        """
+        return self.mat_mul(other)
+    
     def logdet(self):
         """
         This method returns the log determinant of the linear operator.
@@ -239,5 +250,41 @@ class ScalarLinearOperator(DiagonalLinearOperator, InvertibleLinearOperator):
                 The result of applying the conjugate transpose of the linear operator to the input tensor.
         """
         return self.forward(y)
+
+    def transpose_LinearOperator(self):
+        """
+        This method returns the transpose linear operator.
+        
+        For scalar operators, transpose equals the operator itself.
+        
+        returns:
+            result: ScalarLinearOperator
+                The transpose linear operator (same as self).
+        """
+        return ScalarLinearOperator(self.scalar)
+
+    def conjugate_LinearOperator(self):
+        """
+        This method returns the conjugate linear operator.
+        
+        For scalar operators, conjugate is the conjugate of the scalar.
+        
+        returns:
+            result: ScalarLinearOperator
+                The conjugate linear operator.
+        """
+        return ScalarLinearOperator(torch.conj(self.scalar))
+
+    def conjugate_transpose_LinearOperator(self):
+        """
+        This method returns the conjugate transpose linear operator.
+        
+        For scalar operators, conjugate transpose equals conjugate.
+        
+        returns:
+            result: ScalarLinearOperator
+                The conjugate transpose linear operator.
+        """
+        return self.conjugate_LinearOperator()
 
 # Removed inline test definitions and __main__ execution block. 

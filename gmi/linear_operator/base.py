@@ -50,6 +50,8 @@ class LinearOperator(torch.nn.Module, ABC):
         """
         This method implements the conjugate of the linear operator.
         
+        Default implementation: conj(A(x)) = A(conj(x))
+        
         parameters:
             x: torch.Tensor
                 The input tensor to the conjugate of the linear operator.
@@ -57,7 +59,7 @@ class LinearOperator(torch.nn.Module, ABC):
             result: torch.Tensor
                 The result of applying the conjugate of the linear operator to the input tensor.
         """
-        raise NotImplementedError
+        return torch.conj(self.forward(torch.conj(x)))
     
     def conjugate_LinearOperator(self):
         raise NotImplementedError
@@ -66,6 +68,8 @@ class LinearOperator(torch.nn.Module, ABC):
         """
         This method implements the conjugate transpose of the linear operator.
         
+        Default implementation: conj(A^T(y)) = A^T(conj(y))
+        
         parameters:
             y: torch.Tensor
                 The input tensor to the conjugate transpose of the linear operator.
@@ -73,7 +77,7 @@ class LinearOperator(torch.nn.Module, ABC):
             result: torch.Tensor
                 The result of applying the conjugate transpose of the linear operator to the input tensor.
         """
-        raise NotImplementedError
+        return torch.conj(self.transpose(torch.conj(y)))
     
     def conjugate_transpose_LinearOperator(self):
         raise NotImplementedError

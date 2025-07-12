@@ -2,8 +2,8 @@
 
 import torch
 import torch
-from .core import LinearSDE
-from ..linalg import FourierLinearOperator
+from .linear_sde import LinearSDE
+from ..linear_operator import FourierLinearOperator
 
 class FourierSDE(LinearSDE):
     def __init__(self, transfer_function, noise_power_spectrum, dim, transfer_function_prime=None, noise_power_spectrum_prime=None):

@@ -4,9 +4,9 @@ import torch
 import torch.nn as nn
 import torch
 from torch.autograd.functional import jacobian
-from ..linalg import LinearOperator
-from ..linalg import InvertibleLinearOperator, SymmetricLinearOperator
-from ..linalg import ScalarLinearOperator, DiagonalLinearOperator, FourierLinearOperator
+from ..linear_operator import LinearOperator
+from ..linear_operator import InvertibleLinearOperator, SymmetricLinearOperator
+from ..linear_operator import ScalarLinearOperator, DiagonalLinearOperator, FourierLinearOperator
 import numpy as np
 
 class StochasticDifferentialEquation(nn.Module):
@@ -23,7 +23,7 @@ class StochasticDifferentialEquation(nn.Module):
             f: callable
                 The drift term of the SDE. It should take x and t as input and return a tensor of the same shape as x.
             G: callable
-                The diffusion term of the SDE. It should take x and t as input and return a rtl.linalg.LinearOperator that can act on a tensor of the same shape as x.
+                The diffusion term of the SDE. It should take x and t as input and return a gmi.linear_operator.LinearOperator that can act on a tensor of the same shape as x.
         """
 
         self.f = f
