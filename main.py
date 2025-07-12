@@ -75,16 +75,26 @@ def train_image_reconstructor(config, device, experiment_name, train_dataset, va
     """
     from gmi.commands.train_image_reconstructor import train_image_reconstructor_from_configs
     
+    # Define input variables directly (no argument parsing)
+    config_paths = [config]
+    device = device
+    experiment_name = experiment_name
+    train_dataset_path = train_dataset
+    validation_dataset_path = validation_dataset
+    test_dataset_path = test_dataset
+    measurement_simulator_path = measurement_simulator
+    image_reconstructor_path = image_reconstructor
+    
     # Call the command function with all arguments
     train_image_reconstructor_from_configs(
-        config_paths=[config],
+        config_paths=config_paths,
         device=device,
         experiment_name=experiment_name,
-        train_dataset_path=train_dataset,
-        validation_dataset_path=validation_dataset,
-        test_dataset_path=test_dataset,
-        measurement_simulator_path=measurement_simulator,
-        image_reconstructor_path=image_reconstructor
+        train_dataset_path=train_dataset_path,
+        validation_dataset_path=validation_dataset_path,
+        test_dataset_path=test_dataset_path,
+        measurement_simulator_path=measurement_simulator_path,
+        image_reconstructor_path=image_reconstructor_path
     )
 
 # Add the train_diffusion_model command
@@ -115,15 +125,24 @@ def train_diffusion_model(config, device, experiment_name, train_dataset, valida
     """
     from gmi.commands.train_diffusion_model import train_diffusion_model_from_configs
     
+    # Define input variables directly (no argument parsing)
+    config_paths = [config]
+    device = device
+    experiment_name = experiment_name
+    train_dataset_path = train_dataset
+    validation_dataset_path = validation_dataset
+    test_dataset_path = test_dataset
+    diffusion_backbone_path = diffusion_backbone
+    
     # Call the command function with all arguments
     train_diffusion_model_from_configs(
-        config_paths=[config],
+        config_paths=config_paths,
         device=device,
         experiment_name=experiment_name,
-        train_dataset_path=train_dataset,
-        validation_dataset_path=validation_dataset,
-        test_dataset_path=test_dataset,
-        diffusion_backbone_path=diffusion_backbone
+        train_dataset_path=train_dataset_path,
+        validation_dataset_path=validation_dataset_path,
+        test_dataset_path=test_dataset_path,
+        diffusion_backbone_path=diffusion_backbone_path
     )
 
 # Add the evaluate_image_reconstructor command
