@@ -1,0 +1,108 @@
+# Harmonized Diffusion Model Training Configuration
+# This file follows the same structure as image reconstructor configs
+# with additional sections for diffusion-specific components
+
+# Experiment name (used for output directories and logging)
+experiment_name: "medmnist_diffusion_harmonized"
+
+# Dataset configurations (same structure as image reconstructor configs)
+train_dataset:
+  class: gmi.datasets.MedMNIST
+  params:
+    dataset_name: "BloodMNIST"
+    size: 28
+    split: "train"
+    images_only: true
+    root: "gmi_data/datasets/MedMNIST/BloodMNIST"
+
+validation_dataset:
+  class: gmi.datasets.MedMNIST
+  params:
+    dataset_name: "BloodMNIST"
+    size: 28
+    split: "val"
+    images_only: true
+    root: "gmi_data/datasets/MedMNIST/BloodMNIST"
+
+test_dataset:
+  class: gmi.datasets.MedMNIST
+  params:
+    dataset_name: "BloodMNIST"
+    size: 28
+    split: "test"
+    images_only: true
+    root: "gmi_data/datasets/MedMNIST/BloodMNIST"
+
+# Diffusion backbone (replaces image_reconstructor in image reconstructor configs)
+diffusion_backbone:
+  class: gmi.network.DiffusersUnet2D_Size28
+  params:
+    in_channels: 3
+    out_channels: 3
+    layers_per_block: 2
+    block_out_channels: [32, 64, 128]
+    down_block_types: ["DownBlock2D", "DownBlock2D", "DownBlock2D"]
+    up_block_types: ["UpBlock2D", "UpBlock2D", "UpBlock2D"]
+
+# Diffusion-specific components (new sections not in image reconstructor configs)
+# Note: These will use defaults if not specified, but can be overridden
+forward_SDE:
+  class: gmi.sde.SongVarianceExplodingSDE
+  params: {}
+
+training_loss_fn:
+  class: torch.nn.MSELoss
+  params: {}
+
+training_time_sampler:
+  class: gmi.distribution.UniformDistribution
+  params:
+    low: 0.0
+    high: 1.0
+
+# Training configuration (same structure as image reconstructor configs)
+training:
+  # Training for convergence
+  num_epochs: 100  # Reduced for faster testing
+  num_iterations_train: 100  # Reduced for speed
+  num_iterations_val: 10  # Increased for more stable validation loss
+  num_iterations_test: 5  # Increased for better test evaluation
+  final_test_iterations: 20  # Run final test on subset
+  learning_rate: 1e-4  # Optimized for diffusion models
+  device: "cuda"  # or "cpu"
+  
+  # DataLoader parameters (same as image reconstructor configs)
+  batch_size: 32  # Smaller for memory efficiency
+  num_workers: 2
+  shuffle_train: true
+  shuffle_val: true
+  shuffle_test: false
+  
+  # Advanced training features (same as image reconstructor configs)
+  use_ema: true
+  ema_decay: 0.999
+  early_stopping: true
+  patience: 20  # Reduced for faster convergence
+  val_loss_smoothing: 0.9
+  min_delta: 1e-6
+  
+  # Test plotting parameters (same as image reconstructor configs)
+  test_plot_vmin: 0
+  test_plot_vmax: 1
+  test_save_plots: true
+  
+  # Reverse process sampling parameters (new for diffusion models)
+  reverse_t_start: 1.0
+  reverse_t_end: 0.0
+  reverse_spacing: "linear"  # or "logarithmic"
+  reverse_sampler: "euler"   # or "heun"
+  reverse_timesteps: 50
+  
+  # Logging and monitoring (same as image reconstructor configs)
+  verbose: true
+  very_verbose: false
+  wandb_project: "gmi-medmnist-diffusion-harmonized"  # Enable WandB logging
+  wandb_config: null  # Additional WandB config
+  
+  # Model saving (same as image reconstructor configs)
+  save_checkpoints: true 

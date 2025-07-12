@@ -1,0 +1,2 @@
+_target_: gmi.linear_operator.scalar.ScalarLinearOperator
+scalar: 3.0 

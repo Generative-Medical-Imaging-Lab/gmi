@@ -1,0 +1,4 @@
+_target_: gmi.linear_operator.conjugate.ConjugateLinearOperator
+base_matrix_operator:
+  _target_: gmi.linear_operator.scalar.ScalarLinearOperator
+  scalar: 2.0 

@@ -1,0 +1,9 @@
+# Inverse Linear Operator Configuration
+# This config demonstrates how to create an inverse linear operator
+
+_target_: gmi.linear_operator.inverse.InverseLinearOperator
+
+# Base operator to invert (using a scalar operator as example)
+base_matrix_operator:
+  _target_: gmi.linear_operator.scalar.ScalarLinearOperator
+  scalar: 2.0 
