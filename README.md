@@ -110,10 +110,44 @@ gmi_base/                          # Root directory (git clone location)
         └── visualizations/        # Generated visualizations
 ```
 
-## 🐳 Docker Usage
+## 🐳 Docker Development Environment
 
-### Starting the Container
+This project uses a Docker container for a controlled development environment. The container is already running and contains all necessary dependencies. We develop the GMI package by editing files on the host system and testing them inside the container.
 
+### Key Concepts
+
+- **Host System**: Your local machine where you edit files
+- **Docker Container**: Running environment with all dependencies
+- **No Rebuilding**: The container is already set up and running
+- **Live Development**: Edit files on host, test immediately in container
+
+### Container Setup and Architecture
+
+The GMI container is built from `nvidia/cuda:12.8.1-cudnn-runtime-ubuntu22.04` and includes:
+- Python 3.12 with PyTorch 12.8 (CUDA support)
+- All GMI dependencies from `requirements.txt`
+- GMI package installed in editable mode (`pip install -e .`)
+- Non-root user (`gmi_user`) with proper file permissions
+- Working directory: `/gmi_base` (maps to your project root)
+
+### Volume Mounting
+The `docker-compose.yml` mounts your local project directory to `/gmi_base` in the container:
+- Host: `./` (your project root)
+- Container: `/gmi_base`
+- Changes on host are immediately available in container
+
+### GPU Support
+The container is configured with NVIDIA GPU support:
+- Uses NVIDIA Docker runtime
+- All GPUs are available to the container
+- CUDA 12.8.1 with cuDNN support
+
+### Container Management
+
+#### Container Status
+The container is already running and ready to use. You don't need to rebuild or restart it.
+
+#### Starting the Container (if needed)
 ```bash
 # Build and start the container
 docker compose up -d
@@ -122,35 +156,83 @@ docker compose up -d
 docker compose ps
 ```
 
-### Executing Commands
+### Running Commands
+
+#### Option 1: From Outside Container (Docker Exec)
+
+Use this when you're working from your host system and want to execute commands inside the container.
 
 ```bash
-# Run a single command
-docker exec gmi-container python -c "import gmi; print('GMI loaded successfully!')"
+# Execute commands inside the running container
+docker exec -it gmi-container <command>
 
-# Start an interactive shell
-docker exec -it gmi-container bash
-
-# Run the visualization script (downloads all datasets)
-docker exec gmi-container bash examples/visualize_all_datasets/visualize_all_datasets.sh
-
-# Run a specific example
-docker exec gmi-container python examples/test_reconstruction_yaml.py
+# Examples:
+docker exec -it gmi-container python main.py --help
+docker exec -it gmi-container python examples/modular_configs/run_default_study.py
+docker exec -it gmi-container bash examples/modular_configs/run_all_studies_cli.sh
 ```
 
-### Data Persistence
+#### Option 2: From Inside Container
 
-The `gmi_data/` directory is mounted as a volume, so:
-- Downloaded datasets persist between container restarts
-- Model checkpoints are saved to `gmi_data/models/`
-- Visualizations are saved to `gmi_data/outputs/visualizations/`
+Use this when you're already inside the container (e.g., through an interactive session).
 
-### GPU Support
+```bash
+# Start interactive bash session
+docker exec -it gmi-container bash
 
-The Docker configuration includes NVIDIA GPU support. Ensure you have:
-- NVIDIA Docker runtime installed
-- Compatible NVIDIA drivers
-- Docker configured for GPU access
+# Or start interactive Python session
+docker exec -it gmi-container python
+```
+
+#### Common Commands
+```bash
+# Test import
+docker exec -it gmi-container python -c "import gmi; print('Package loaded successfully')"
+
+# Test CLI help
+docker exec -it gmi-container python main.py --help
+
+# Test specific command
+docker exec -it gmi-container python main.py train-image-reconstructor examples/modular_configs/training_config.yaml --experiment-name test
+
+# Run example scripts
+docker exec -it gmi-container python examples/modular_configs/run_default_study.py
+docker exec -it gmi-container python examples/modular_configs/run_all_modular_studies.py
+docker exec -it gmi-container bash examples/modular_configs/run_all_studies_cli.sh
+```
+
+### Development Workflow
+
+1. **Edit Files**: Edit GMI package files on your host system
+2. **Test Changes**: Run tests inside the container to verify changes
+3. **Debug Issues**: Use stack traces to identify and fix problems
+4. **Run Examples**: Once components work, run full examples
+
+### Debugging Tips
+
+```bash
+# Check container status
+docker ps
+
+# Check container logs
+docker logs gmi-container
+
+# Interactive debugging
+docker exec -it gmi-container python
+docker exec -it gmi-container bash
+
+# Check GPU availability
+docker exec -it gmi-container nvidia-smi
+docker exec -it gmi-container python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}')"
+```
+
+### Troubleshooting
+
+- **Container Not Responding**: `docker restart gmi-container`
+- **Permission Issues**: Check file permissions with `docker exec -it gmi-container ls -la /gmi_base/`
+- **Memory Issues**: Monitor with `docker stats gmi-container`
+
+This development environment provides a controlled, reproducible setup for developing and testing the GMI package. The key is to understand that you're editing on the host but testing in the container, and the `docker exec` command is your bridge between the two.
 
 ## 🎯 Core Features
 

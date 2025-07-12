@@ -1,6 +1,7 @@
 # /gmi/gmi/__init__.py: Initializes the gmi package
 
 from . import linalg
+from . import linear_operator
 from . import samplers
 from . import distribution
 from . import sde
