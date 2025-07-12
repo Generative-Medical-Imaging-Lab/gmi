@@ -4,12 +4,11 @@ Command for training diffusion models from YAML configuration.
 
 import yaml
 import torch
-import argparse
 from pathlib import Path
 from typing import Dict, Any, List, Union, Optional
 
 from ..diffusion.core import DiffusionModel
-from ..config import load_components_from_dict, load_and_merge_configs, load_object_from_dict
+from ..config import load_and_merge_configs, load_object_from_dict
 
 
 def train_diffusion_model_from_configs(config_paths: List[Union[str, Path]], 

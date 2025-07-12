@@ -645,6 +645,224 @@ class DiffusionModel(torch.nn.Module):
         
         return summary_stats
 
+    def train_diffusion_model_from_config(self, config_dict, device=None, experiment_name=None, output_dir=None):
+        """
+        Train the diffusion model using a configuration dictionary.
+        
+        Args:
+            config_dict: Configuration dictionary containing training parameters
+            device: Device to use (default: auto-detect)
+            experiment_name: Override experiment name from config
+            output_dir: Override output directory from config
+            
+        Returns:
+            Tuple of (train_losses, val_losses, eval_metrics)
+        """
+        from ..config import load_object_from_dict
+        
+        # Extract components from config
+        train_dataset = config_dict.get('train_dataset')
+        validation_dataset = config_dict.get('validation_dataset')
+        test_dataset = config_dict.get('test_dataset')
+        diffusion_backbone = config_dict.get('diffusion_backbone')
+        
+        # Extract diffusion-specific components
+        forward_SDE = config_dict.get('forward_SDE')
+        training_loss_fn = config_dict.get('training_loss_fn')
+        training_time_sampler = config_dict.get('training_time_sampler')
+        training_time_uncertainty_sampler = config_dict.get('training_time_uncertainty_sampler')
+        
+        # Load components if they are config dictionaries
+        if isinstance(train_dataset, dict):
+            train_dataset = load_object_from_dict(train_dataset)
+        if isinstance(validation_dataset, dict):
+            validation_dataset = load_object_from_dict(validation_dataset)
+        if isinstance(test_dataset, dict):
+            test_dataset = load_object_from_dict(test_dataset)
+        if isinstance(diffusion_backbone, dict):
+            diffusion_backbone = load_object_from_dict(diffusion_backbone)
+        
+        # Load diffusion-specific components if they are config dictionaries
+        if isinstance(forward_SDE, dict):
+            forward_SDE = load_object_from_dict(forward_SDE)
+        if isinstance(training_loss_fn, dict):
+            training_loss_fn = load_object_from_dict(training_loss_fn)
+        if isinstance(training_time_sampler, dict):
+            training_time_sampler = load_object_from_dict(training_time_sampler)
+        if isinstance(training_time_uncertainty_sampler, dict):
+            training_time_uncertainty_sampler = load_object_from_dict(training_time_uncertainty_sampler)
+        
+        # Use train_dataset as the main dataset
+        dataset = train_dataset
+        
+        if not all([dataset, diffusion_backbone]):
+            raise ValueError("Configuration must contain 'train_dataset' and 'diffusion_backbone'")
+        
+        # Set device
+        if device is None:
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        
+        print(f"Using device: {device}")
+        if device == 'cuda':
+            print(f"GPU: {torch.cuda.get_device_name(0)}")
+        
+        # Move diffusion backbone to device if it's not already
+        if hasattr(diffusion_backbone, 'to'):
+            diffusion_backbone = diffusion_backbone.to(device)
+        
+        # Get experiment name
+        if experiment_name is None:
+            experiment_name = config_dict.get('experiment_name', 'unnamed_diffusion_experiment')
+        
+        # Determine output directory
+        if output_dir is None:
+            output_dir = config_dict.get('output_dir', f"gmi_data/outputs/{experiment_name}")
+        
+        print(f"Starting training for experiment: {experiment_name}")
+        
+        # Create diffusion model with optional components
+        diffusion_model = DiffusionModel(
+            diffusion_backbone=diffusion_backbone,
+            forward_SDE=forward_SDE,
+            training_loss_fn=training_loss_fn,
+            training_time_sampler=training_time_sampler,
+            training_time_uncertainty_sampler=training_time_uncertainty_sampler
+        )
+        
+        # Extract training configuration
+        training_config = config_dict.get('training', {})
+        
+        # Explicitly cast numeric values to correct types
+        def to_int(val, default):
+            try:
+                return int(val)
+            except Exception:
+                return int(default)
+        def to_float(val, default):
+            try:
+                return float(val)
+            except Exception:
+                return float(default)
+        
+        # Cast all relevant fields
+        num_epochs = to_int(training_config.get('num_epochs', 100), 100)
+        num_iterations_train = to_int(training_config.get('num_iterations_train', 100), 100)
+        num_iterations_val = to_int(training_config.get('num_iterations_val', 10), 10)
+        num_iterations_test = to_int(training_config.get('num_iterations_test', 1), 1)
+        learning_rate = to_float(training_config.get('learning_rate', 0.001), 0.001)
+        batch_size = to_int(training_config.get('batch_size', 4), 4)
+        num_workers = to_int(training_config.get('num_workers', 4), 4)
+        patience = to_int(training_config.get('patience', 10), 10)
+        val_loss_smoothing = to_float(training_config.get('val_loss_smoothing', 0.9), 0.9)
+        min_delta = to_float(training_config.get('min_delta', 1e-6), 1e-6)
+        ema_decay = to_float(training_config.get('ema_decay', 0.999), 0.999)
+        test_plot_vmin = to_float(training_config.get('test_plot_vmin', 0), 0)
+        test_plot_vmax = to_float(training_config.get('test_plot_vmax', 1), 1)
+        reverse_t_start = to_float(training_config.get('reverse_t_start', 1.0), 1.0)
+        reverse_t_end = to_float(training_config.get('reverse_t_end', 0.0), 0.0)
+        reverse_timesteps = to_int(training_config.get('reverse_timesteps', 50), 50)
+        
+        # Train the model with training config
+        train_losses, val_losses, eval_metrics = diffusion_model.train_diffusion_model(
+            dataset=dataset,
+            val_data=validation_dataset,
+            test_data=test_dataset,
+            experiment_name=experiment_name,
+            output_dir=output_dir,
+            num_epochs=num_epochs,
+            num_iterations_train=num_iterations_train,
+            num_iterations_val=num_iterations_val,
+            num_iterations_test=num_iterations_test,
+            learning_rate=learning_rate,
+            train_batch_size=batch_size,
+            val_batch_size=batch_size,
+            test_batch_size=batch_size,
+            train_num_workers=num_workers,
+            val_num_workers=num_workers,
+            test_num_workers=num_workers,
+            shuffle_train=training_config.get('shuffle_train', True),
+            shuffle_val=training_config.get('shuffle_val', True),
+            shuffle_test=training_config.get('shuffle_test', False),
+            use_ema=training_config.get('use_ema', True),
+            ema_decay=ema_decay,
+            early_stopping=training_config.get('early_stopping', True),
+            patience=patience,
+            val_loss_smoothing=val_loss_smoothing,
+            min_delta=min_delta,
+            verbose=training_config.get('verbose', True),
+            very_verbose=training_config.get('very_verbose', False),
+            wandb_project=training_config.get('wandb_project', None),
+            wandb_config=training_config.get('wandb_config', None),
+            save_checkpoints=training_config.get('save_checkpoints', True),
+            test_plot_vmin=test_plot_vmin,
+            test_plot_vmax=test_plot_vmax,
+            test_save_plots=training_config.get('test_save_plots', True),
+            final_test_iterations=training_config.get('final_test_iterations', 'all'),
+            reverse_t_start=reverse_t_start,
+            reverse_t_end=reverse_t_end,
+            reverse_spacing=training_config.get('reverse_spacing', 'linear'),
+            reverse_sampler=training_config.get('reverse_sampler', 'euler'),
+            reverse_timesteps=reverse_timesteps
+        )
+        
+        print(f"Training completed!")
+        print(f"Final train loss: {train_losses[-1]:.4f}")
+        if val_losses:
+            print(f"Final validation loss: {val_losses[-1]:.4f}")
+        
+        return train_losses, val_losses, eval_metrics
+
+    @classmethod
+    def train_from_config_file(cls, config_path, device=None, experiment_name=None, output_dir=None):
+        """
+        Train a diffusion model from a YAML configuration file.
+        
+        Args:
+            config_path: Path to YAML configuration file
+            device: Device to use (default: auto-detect)
+            experiment_name: Override experiment name from config
+            output_dir: Override output directory from config
+            
+        Returns:
+            Tuple of (train_losses, val_losses, eval_metrics)
+        """
+        import yaml
+        from pathlib import Path
+        from ..config import load_object_from_dict
+        
+        # Load configuration file
+        config_path = Path(config_path)
+        if not config_path.exists():
+            raise FileNotFoundError(f"Configuration file not found: {config_path}")
+        
+        with open(config_path, 'r') as f:
+            config_dict = yaml.safe_load(f)
+        
+        # Extract diffusion backbone from config
+        diffusion_backbone = config_dict.get('diffusion_backbone')
+        if diffusion_backbone is None:
+            raise ValueError("Configuration must contain 'diffusion_backbone'")
+        
+        # Load diffusion backbone if it's a config dictionary
+        if isinstance(diffusion_backbone, dict):
+            diffusion_backbone = load_object_from_dict(diffusion_backbone)
+        
+        # Set device
+        if device is None:
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        
+        # Move diffusion backbone to device
+        if hasattr(diffusion_backbone, 'to'):
+            diffusion_backbone = diffusion_backbone.to(device)
+        
+        # Create diffusion model
+        diffusion_model = cls(diffusion_backbone=diffusion_backbone)
+        
+        # Train using the config
+        return diffusion_model.train_diffusion_model_from_config(
+            config_dict, device, experiment_name, output_dir
+        )
+
 class DiffusionBackbone(torch.nn.Module):
     def __init__(self,
                  x_t_encoder,
