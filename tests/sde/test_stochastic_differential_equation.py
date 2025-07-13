@@ -1,7 +1,7 @@
 import torch
 import pytest
 from gmi.sde import StochasticDifferentialEquation
-from gmi.linear_operator import ScalarLinearOperator
+from gmi.linear_system import Scalar
 
 def test_sde_instantiation():
     # Create simple drift and diffusion functions
@@ -9,7 +9,7 @@ def test_sde_instantiation():
         return -x  # Simple mean-reverting drift
     
     def G(x, t):
-        return ScalarLinearOperator(1.0)  # Constant diffusion
+        return Scalar(1.0)  # Constant diffusion
     
     sde = StochasticDifferentialEquation(f=f, G=G)
     assert isinstance(sde, StochasticDifferentialEquation)
@@ -20,7 +20,7 @@ def test_sde_forward():
         return -x  # Simple mean-reverting drift
     
     def G(x, t):
-        return ScalarLinearOperator(1.0)  # Constant diffusion
+        return Scalar(1.0)  # Constant diffusion
     
     sde = StochasticDifferentialEquation(f=f, G=G)
     
@@ -30,7 +30,7 @@ def test_sde_forward():
     
     assert isinstance(f_val, torch.Tensor)
     assert f_val.shape == x.shape
-    assert isinstance(G_op, ScalarLinearOperator)
+    assert isinstance(G_op, Scalar)
 
 def test_sde_sample_shapes():
     # Create simple drift and diffusion functions
@@ -38,7 +38,7 @@ def test_sde_sample_shapes():
         return -x  # Simple mean-reverting drift
     
     def G(x, t):
-        return ScalarLinearOperator(1.0)  # Constant diffusion
+        return Scalar(1.0)  # Constant diffusion
     
     sde = StochasticDifferentialEquation(f=f, G=G)
     
@@ -54,7 +54,7 @@ def test_sde_sample_return_all():
         return -x  # Simple mean-reverting drift
     
     def G(x, t):
-        return ScalarLinearOperator(1.0)  # Constant diffusion
+        return Scalar(1.0)  # Constant diffusion
     
     sde = StochasticDifferentialEquation(f=f, G=G)
     
@@ -73,7 +73,7 @@ def test_sde_euler_sampler():
         return -x  # Simple mean-reverting drift
     
     def G(x, t):
-        return ScalarLinearOperator(1.0)  # Constant diffusion
+        return Scalar(1.0)  # Constant diffusion
     
     sde = StochasticDifferentialEquation(f=f, G=G)
     
@@ -89,7 +89,7 @@ def test_sde_heun_sampler():
         return -x  # Simple mean-reverting drift
     
     def G(x, t):
-        return ScalarLinearOperator(1.0)  # Constant diffusion
+        return Scalar(1.0)  # Constant diffusion
     
     sde = StochasticDifferentialEquation(f=f, G=G)
     
@@ -105,7 +105,7 @@ def test_sde_invalid_sampler():
         return -x  # Simple mean-reverting drift
     
     def G(x, t):
-        return ScalarLinearOperator(1.0)  # Constant diffusion
+        return Scalar(1.0)  # Constant diffusion
     
     sde = StochasticDifferentialEquation(f=f, G=G)
     

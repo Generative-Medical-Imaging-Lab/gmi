@@ -1,11 +1,11 @@
 
 import torch
 
-from .core import RealLinearOperator
+from .core import RealLinearSystem
 from .interp import NearestNeighborInterpolator, BilinearInterpolator, LanczosInterpolator 
 
 
-class PolarCoordinateResampler(RealLinearOperator):
+class PolarCoordinateResampler(RealLinearSystem):
     def __init__(self, theta_values, radius_values, row_center=None, col_center=None, interpolator=None):
         """
         This class implements a polar coordinate transformation that can be used in a PyTorch model.

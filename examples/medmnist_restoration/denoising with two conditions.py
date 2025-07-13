@@ -108,7 +108,7 @@ dataloader_test = torch.utils.data.DataLoader(dataset_test,
                                               num_workers=0)
 
 #---------------------- Defining the model ----------------------
-forward_SDE = gmi.sde.SongVarianceExplodingSDE(noise_variance=lambda t: t,
+forward_SDE = gmi.sde.VarianceExplodingSDE(noise_variance=lambda t: t,
                                                noise_variance_prime=lambda t: t * 0.0 + 1.0)
 
 class ConditionalUNet(UNet2DModel):

@@ -47,7 +47,7 @@ diffusion_backbone:
 # Diffusion-specific components (new sections not in image reconstructor configs)
 # Note: These will use defaults if not specified, but can be overridden
 forward_SDE:
-  class: gmi.sde.SongVarianceExplodingSDE
+  class: gmi.sde.VarianceExplodingSDE
   params: {}
 
 training_loss_fn:

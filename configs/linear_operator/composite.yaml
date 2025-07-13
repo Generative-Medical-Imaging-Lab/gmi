@@ -1,6 +1,0 @@
-_target_: gmi.linear_operator.composite.CompositeLinearOperator
-matrix_operators:
-  - _target_: gmi.linear_operator.scalar.ScalarLinearOperator
-    scalar: 2.0
-  - _target_: gmi.linear_operator.scalar.ScalarLinearOperator
-    scalar: 3.0 

@@ -1,8 +1,8 @@
 import torch
 
-from .core import RealLinearOperator
+from .core import RealLinearSystem
     
-class RealPart(RealLinearOperator):
+class RealPart(RealLinearSystem):
     def __init__(self):
         """
         This class converts a complex tensor to a real tensor by taking the real part

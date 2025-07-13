@@ -1,9 +1,9 @@
 # random_tensor_laboratory/fourier.py
 import torch
 
-from .core import UnitaryLinearOperator, DiagonalLinearOperator, EigenDecomposedLinearOperator
+from .core import UnitaryLinearSystem, DiagonalScalar, EigenDecomposedLinearSystem
     
-class FourierTransform(UnitaryLinearOperator):
+class FourierTransform(UnitaryLinearSystem):
     def __init__(self, dim):
         """
         This class implements a N-Dimensional Fourier transform that can be used in a PyTorch model.
@@ -30,7 +30,7 @@ class FourierTransform(UnitaryLinearOperator):
         y_fftshift = torch.fft.fftshift(y_ifft, dim=self.dim)
         return y_fftshift
 
-class FourierLinearOperator(EigenDecomposedLinearOperator):
+class FourierLinearSystem(EigenDecomposedLinearSystem):
     def __init__(self, filter, dim):
         """
         This class implementts a ND Fourier filter that can be used in a PyTorch model.
@@ -40,28 +40,28 @@ class FourierLinearOperator(EigenDecomposedLinearOperator):
         it returns the Fourier filter applied to the input. 
         """
         eigenvector_matrix = FourierTransform(dim=dim)
-        eigenvalue_matrix = DiagonalLinearOperator(filter)
-        super(FourierLinearOperator, self).__init__(eigenvector_matrix, eigenvalue_matrix)
+        eigenvalue_matrix = DiagonalScalar(filter)
+        super(FourierLinearSystem, self).__init__(eigenvector_matrix, eigenvalue_matrix)
         self.dim = dim
         self.filter = filter
 
     def mat_add(self, added_fourier_filter):
-        assert isinstance(added_fourier_filter, (FourierLinearOperator)), "FourierLinearOperator addition only supported for FourierLinearOperator." 
-        assert self.dim == added_fourier_filter.dim, "FourierLinearOperator addition only supported for FourierLinearOperator with same dim."
-        return FourierLinearOperator(self.filter + added_fourier_filter.filter, dim=self.dim)
+        assert isinstance(added_fourier_filter, (FourierLinearSystem)), "FourierLinearSystem addition only supported for FourierLinearSystem." 
+        assert self.dim == added_fourier_filter.dim, "FourierLinearSystem addition only supported for FourierLinearSystem with same dim."
+        return FourierLinearSystem(self.filter + added_fourier_filter.filter, dim=self.dim)
     
     def mat_sub(self, sub_fourier_filter):
-        assert isinstance(sub_fourier_filter, (FourierLinearOperator)), "FourierLinearOperator subtraction only supported for FourierLinearOperator."
-        assert self.dim == sub_fourier_filter.dim, "FourierLinearOperator subtraction only supported for FourierLinearOperator with same dim."
-        return FourierLinearOperator(self.filter - sub_fourier_filter.filter, dim=self.dim)
+        assert isinstance(sub_fourier_filter, (FourierLinearSystem)), "FourierLinearSystem subtraction only supported for FourierLinearSystem."
+        assert self.dim == sub_fourier_filter.dim, "FourierLinearSystem subtraction only supported for FourierLinearSystem with same dim."
+        return FourierLinearSystem(self.filter - sub_fourier_filter.filter, dim=self.dim)
     
     def mat_mul(self, mul_fourier_filter):
-        assert isinstance(mul_fourier_filter, (FourierLinearOperator)), "FourierLinearOperator multiplication only supported for FourierLinearOperator."
-        assert self.dim == mul_fourier_filter.dim, "FourierLinearOperator multiplication only supported for FourierLinearOperator with same dim."
-        return FourierLinearOperator(self.filter * mul_fourier_filter.filter, dim=self.dim)
+        assert isinstance(mul_fourier_filter, (FourierLinearSystem)), "FourierLinearSystem multiplication only supported for FourierLinearSystem."
+        assert self.dim == mul_fourier_filter.dim, "FourierLinearSystem multiplication only supported for FourierLinearSystem with same dim."
+        return FourierLinearSystem(self.filter * mul_fourier_filter.filter, dim=self.dim)
     
 
-class FourierConvolution(FourierLinearOperator):
+class FourierConvolution(FourierLinearSystem):
     def __init__(self, kernel, dim):
         """
         This class implements a 2D Fourier convolution that can be used in a PyTorch model.

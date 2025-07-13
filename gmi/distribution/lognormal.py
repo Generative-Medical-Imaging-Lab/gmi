@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 from .core import Distribution
-from ..linear_operator import LinearOperator, ScalarLinearOperator
+from ..linear_system import LinearSystem, Scalar
 
 
 class LogNormalDistribution(Distribution):
@@ -18,10 +18,10 @@ class LogNormalDistribution(Distribution):
             mu = torch.tensor(mu)
 
         if isinstance(Sigma, float):
-            Sigma = ScalarLinearOperator(Sigma)
+            Sigma = Scalar(Sigma)
 
         assert isinstance(mu, torch.Tensor)
-        assert isinstance(Sigma, LinearOperator)
+        assert isinstance(Sigma, LinearSystem)
 
         self.mu = mu
 
@@ -31,7 +31,7 @@ class LogNormalDistribution(Distribution):
     def sample(self, batch_size):
         total_shape = [batch_size] + list(self.mu.shape)
         white_noise = torch.randn(total_shape, device=self.mu.device)
-        sqrt_Sigma = self.Sigma.sqrt_LinearOperator()
+        sqrt_Sigma = self.Sigma.sqrt_LinearSystem()
         correlated_noise =  sqrt_Sigma @ white_noise
         return torch.exp(self.mu + correlated_noise)
     def log_prob(self, x):

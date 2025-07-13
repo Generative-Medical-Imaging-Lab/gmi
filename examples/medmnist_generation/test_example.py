@@ -31,7 +31,7 @@ def test_diffusion_model_creation():
         up_block_types=("UpBlock2D", "UpBlock2D", "UpBlock2D")
     ).to(device)
     
-    forward_SDE = gmi.sde.SongVarianceExplodingSDE(
+    forward_SDE = gmi.sde.VarianceExplodingSDE(
         noise_variance=lambda t: t, 
         noise_variance_prime=lambda t: t*0.0 + 1.0
     )

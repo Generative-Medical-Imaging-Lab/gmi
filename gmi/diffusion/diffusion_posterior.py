@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 from ..sde import LinearSDE, StandardWienerSDE
-from ..linear_operator import DiagonalLinearOperator
+from ..linear_system import DiagonalScalar
 from ..distribution import UniformDistribution, GaussianDistribution
 from ..samplers import Sampler
 from .core import DiffusionModel
@@ -196,7 +196,7 @@ class DiffusionPosteriorModel(DiffusionModel):
 
             mu_pred = mu_pred.detach()
             logvar_pred = logvar_pred.detach()
-            prior_distribution = GaussianDistribution(mu_pred, DiagonalLinearOperator(torch.exp(logvar_pred)))
+            prior_distribution = GaussianDistribution(mu_pred, DiagonalScalar(torch.exp(logvar_pred)))
 
             x_recon = x_init.detach().requires_grad_(True)
             optimizer = torch.optim.Adam([x_recon], lr=lr)

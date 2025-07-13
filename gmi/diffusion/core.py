@@ -3,7 +3,7 @@ from torch import nn
 from ..sde import LinearSDE, StandardWienerSDE
 from ..distribution import UniformDistribution
 from ..samplers import Sampler
-from ..linear_operator import InvertibleLinearOperator
+from ..linear_system import InvertibleLinearSystem
 
 
 class DiffusionModel(torch.nn.Module):
@@ -149,7 +149,7 @@ class DiffusionModel(torch.nn.Module):
 
         def prior_score_estimator(x_t, t, x_0):
             Sigma_t = self.forward_SDE.Sigma(t)
-            Sigma_t_inv = Sigma_t.inverse_LinearOperator()
+            Sigma_t_inv = Sigma_t.inverse_LinearSystem()
             return Sigma_t_inv @ (x_0 - x_t)
 
         def posterior_score_estimator(x_t, t):

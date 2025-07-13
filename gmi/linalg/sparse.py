@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from .core import LinearOperator
+from .core import LinearSystem
 
 from matplotlib import pyplot as plt
 
@@ -13,7 +13,7 @@ os.environ['TORCH_USE_CUDA_DSA'] = '1'
 pi = 3.1415927410125732
 
 
-class ColSparseLinearOperator(LinearOperator):
+class ColSparseLinearSystem(LinearSystem):
     def __init__(self, input_shape, output_shape, indices, weights):
         """
         This class implements a column sparse linear operator that can be used in a PyTorch model.
@@ -32,7 +32,7 @@ class ColSparseLinearOperator(LinearOperator):
                 The weights of the linear operator.
         """
 
-        super(ColSparseLinearOperator, self).__init__(input_shape, output_shape)
+        super(ColSparseLinearSystem, self).__init__(input_shape, output_shape)
 
         # Check that indices and weights have the same shape.
         assert indices.shape == weights.shape, "Indices and weights must have the same shape."
@@ -116,7 +116,7 @@ class ColSparseLinearOperator(LinearOperator):
 
 
 
-class RowSparseLinearOperator(LinearOperator):
+class RowSparseLinearSystem(LinearSystem):
     """
     This class implements a row-column sparse linear operator that can be used in a PyTorch model.
 
@@ -131,7 +131,7 @@ class RowSparseLinearOperator(LinearOperator):
             The 1D indices of the flattened output tensor that each weight corresponds to.
     """
     def __init__(self, input_shape, output_shape, indices, weights):
-        super(RowSparseLinearOperator, self).__init__(input_shape, output_shape)
+        super(RowSparseLinearSystem, self).__init__(input_shape, output_shape)
         assert indices.shape == weights.shape, "Indices and weights must have the same shape."
         self.indices = indices
         self.weights = weights

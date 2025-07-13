@@ -61,7 +61,7 @@ dataloader_test = torch.utils.data.DataLoader(dataset_test,
                                                 shuffle=False,
                                                 num_workers=4)
 
-forward_SDE = gmi.sde.SongVarianceExplodingSDE(noise_variance = lambda t: t, noise_variance_prime = lambda t: t*0.0 + 1.0)
+forward_SDE = gmi.sde.VarianceExplodingSDE(noise_variance = lambda t: t, noise_variance_prime = lambda t: t*0.0 + 1.0)
 
 # Use the smaller DiffusersUnet2D_Size28 network specifically designed for 28x28 images
 # This matches the simple_unet_1ch.yaml configuration from modular_configs

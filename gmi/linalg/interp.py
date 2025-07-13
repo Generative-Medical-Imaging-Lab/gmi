@@ -1,13 +1,13 @@
 import torch
 
-from .sparse import ColSparseLinearOperator
+from .sparse import ColSparseLinearSystem
 
-class NearestNeighborInterpolator(ColSparseLinearOperator):
+class NearestNeighborInterpolator(ColSparseLinearSystem):
     def __init__(self, num_row, num_col, interp_points):
         """
         This class implements a nearest neighbor interpolator that can be used in a PyTorch model.
         
-        It inherits from the ColSparseLinearOperator class.
+        It inherits from the ColSparseLinearSystem class.
         
         The weights are precomputed using nearest neighbor interpolation.
         
@@ -59,13 +59,13 @@ class NearestNeighborInterpolator(ColSparseLinearOperator):
         result = super().to(*args, **kwargs)
         return result
 
-class BilinearInterpolator(ColSparseLinearOperator):
+class BilinearInterpolator(ColSparseLinearSystem):
     def __init__(self, num_row, num_col, interp_points):
 
         """
         This class implements a bilinear interpolator that can be used in a PyTorch model.
 
-        It inherits from the ColSparseLinearOperator class.
+        It inherits from the ColSparseLinearSystem class.
 
         The weights are precomputed using bilinear interpolation.
 
@@ -133,7 +133,7 @@ class BilinearInterpolator(ColSparseLinearOperator):
         return result
 
 
-class LanczosInterpolator(ColSparseLinearOperator):
+class LanczosInterpolator(ColSparseLinearSystem):
     def __init__(self, num_row, num_col, interp_points, kernel_size=3):
         """
         This class implements the Lanczos interpolation method that can be used in a PyTorch model.

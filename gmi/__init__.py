@@ -1,7 +1,6 @@
 # /gmi/gmi/__init__.py: Initializes the gmi package
 
 from . import linalg
-from . import linear_operator
 from . import samplers
 from . import distribution
 from . import sde
@@ -12,10 +11,11 @@ from . import tasks
 from . import train
 from . import lr_scheduler
 from . import loss_function
+from . import linear_system
 
 from .samplers import Sampler
 from .distribution import Distribution
-from .linalg import LinearOperator
+from .linalg import LinearSystem
 from .train import train
 
 

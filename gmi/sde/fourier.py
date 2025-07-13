@@ -3,7 +3,7 @@
 import torch
 import torch
 from .linear_sde import LinearSDE
-from ..linear_operator import FourierLinearOperator
+from ..linear_system import FourierFilter
 
 class FourierSDE(LinearSDE):
     def __init__(self, transfer_function, noise_power_spectrum, dim, transfer_function_prime=None, noise_power_spectrum_prime=None):
@@ -26,16 +26,16 @@ class FourierSDE(LinearSDE):
         assert isinstance(transfer_function(0.0), (torch.Tensor)), "transfer_function(t) must return a Fourier filter."
         assert isinstance(noise_power_spectrum(0.0), (torch.Tensor)), "noise_power_spectrum(t) must return a Fourier filter."
 
-        H = lambda t: FourierLinearOperator(transfer_function(t), dim)
-        Sigma = lambda t: FourierLinearOperator(noise_power_spectrum(t), dim)
+        H = lambda t: FourierFilter(transfer_function(t), dim)
+        Sigma = lambda t: FourierFilter(noise_power_spectrum(t), dim)
 
         if transfer_function_prime is None:
             transfer_function_prime = lambda t: torch.autograd.grad(transfer_function(t), t, create_graph=True)[0]
         if noise_power_spectrum_prime is None:
             noise_power_spectrum_prime = lambda t: torch.autograd.grad(noise_power_spectrum(t), t, create_graph=True)[0]
 
-        H_prime = lambda t: FourierLinearOperator(transfer_function_prime(t), dim)
-        Sigma_prime = lambda t: FourierLinearOperator(noise_power_spectrum_prime(t), dim)
+        H_prime = lambda t: FourierFilter(transfer_function_prime(t), dim)
+        Sigma_prime = lambda t: FourierFilter(noise_power_spectrum_prime(t), dim)
 
         super(FourierSDE, self).__init__(H, Sigma, H_prime, Sigma_prime)
 

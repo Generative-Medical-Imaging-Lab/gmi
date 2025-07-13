@@ -1,7 +1,7 @@
 # random_tensor_laboratory/linalg/core.py
 import torch
 
-class LinearOperator(torch.nn.Module):
+class LinearSystem(torch.nn.Module):
     def __init__(self):
         """
         This is an abstract class for linear operators.
@@ -14,7 +14,7 @@ class LinearOperator(torch.nn.Module):
             None
         """
 
-        super(LinearOperator, self).__init__()
+        super(LinearSystem, self).__init__()
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -30,7 +30,7 @@ class LinearOperator(torch.nn.Module):
 
         return NotImplementedError
     
-    def forward_LinearOperator(self):
+    def forward_LinearSystem(self):
         return self
     
     def transpose(self,y: torch.Tensor) -> torch.Tensor:
@@ -56,7 +56,7 @@ class LinearOperator(torch.nn.Module):
             if hasattr(self, 'input_shape_given_output_shape'):
                 self.input_shape = self.input_shape_given_output_shape(y.shape)
             else:
-                raise NotImplementedError("Subclass of rtl.linear_operators.LinearOperator must either define the input_shape, define the input_shape_given_output_shape(output_shape) method, or attribute or implement the transpose method.")
+                raise NotImplementedError("Subclass of rtl.linear_systems.LinearSystem must either define the input_shape, define the input_shape_given_output_shape(output_shape) method, or attribute or implement the transpose method.")
 
         _input = torch.zeros(input_shape, dtype=y.dtype, device=y.device)
         _input.requires_grad = True
@@ -68,8 +68,8 @@ class LinearOperator(torch.nn.Module):
         z = _input.grad
         return z
     
-    def transpose_LinearOperator(self):
-        return TransposeLinearOperator(self)
+    def transpose_LinearSystem(self):
+        return TransposeLinearSystem(self)
     
     def conjugate(self, x: torch.Tensor):
         """
@@ -80,14 +80,14 @@ class LinearOperator(torch.nn.Module):
                 The input tensor to the conjugate of the linear operator.
 
         returns:
-            conjugate: LinearOperator object
+            conjugate: LinearSystem object
                 The conjugate of the linear operator.
 
         """
         return torch.conj(self.forward(torch.conj(x)))
 
-    def conjugate_LinearOperator(self):
-        return ConjugateLinearOperator(self)
+    def conjugate_LinearSystem(self):
+        return ConjugateLinearSystem(self)
     
     def conjugate_transpose(self, y: torch.Tensor) -> torch.Tensor:
         """
@@ -104,14 +104,14 @@ class LinearOperator(torch.nn.Module):
         z = torch.conj(self.transpose(torch.conj(y)))
         return z
     
-    def conjugate_transpose_LinearOperator(self):
-        return ConjugateTransposeLinearOperator(self)    
+    def conjugate_transpose_LinearSystem(self):
+        return ConjugateTransposeLinearSystem(self)    
     
-    def sqrt_LinearOperator(self):
+    def sqrt_LinearSystem(self):
         raise NotImplementedError
     
-    def inv_LinearOperator(self):
-        return InverseLinearOperator(self)
+    def inv_LinearSystem(self):
+        return InverseLinearSystem(self)
     
     def logdet(self):
         raise NotImplementedError
@@ -221,18 +221,18 @@ class LinearOperator(torch.nn.Module):
         return self.mat_mul(M)
 
     
-class RealLinearOperator(LinearOperator):
+class RealLinearSystem(LinearSystem):
     def __init__(self):
         """
         This is an abstract class for real linear operators.
 
-        It inherits from LinearOperator.
+        It inherits from LinearSystem.
 
         parameters:
             None
         """
 
-        super(RealLinearOperator, self).__init__()
+        super(RealLinearSystem, self).__init__()
 
     def conjugate(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -243,15 +243,15 @@ class RealLinearOperator(LinearOperator):
                 The input tensor to the conjugate of the linear operator.
 
         returns:
-            conjugate: LinearOperator object
+            conjugate: LinearSystem object
                 The conjugate of the linear operator.
 
         """
         # for real linear operators, the conjugate is the same as the forward
         self.forward(x)        
     
-    def conjugate_LinearOperator(self):
-        return self.forward_LinearOperator()
+    def conjugate_LinearSystem(self):
+        return self.forward_LinearSystem()
     
     def conjugate_transpose(self, y: torch.Tensor) -> torch.Tensor:
         """ 
@@ -269,16 +269,16 @@ class RealLinearOperator(LinearOperator):
         # for real linear operators, the conjugate transpose is the same as the transpose
         return self.transpose(y)
     
-    def conjugate_transpose_LinearOperator(self):
-        return self.transpose_LinearOperator()
+    def conjugate_transpose_LinearSystem(self):
+        return self.transpose_LinearSystem()
     
 
-class SquareLinearOperator(LinearOperator):
+class SquareLinearSystem(LinearSystem):
     def __init__(self):
         """
         This is an abstract class for square linear operators.
 
-        It inherits from LinearOperator.
+        It inherits from LinearSystem.
 
         For square linear operators, the input and output shapes are the same.
 
@@ -286,7 +286,7 @@ class SquareLinearOperator(LinearOperator):
             None
         """
 
-        super(SquareLinearOperator, self).__init__()
+        super(SquareLinearSystem, self).__init__()
 
     def compute_input_shape_given_output_shape(self, output_shape):
         """
@@ -303,7 +303,7 @@ class SquareLinearOperator(LinearOperator):
         return output_shape
     
 
-class InvertibleLinearOperator(SquareLinearOperator):
+class InvertibleLinearSystem(SquareLinearSystem):
     def inverse(self, y: torch.Tensor) -> torch.Tensor:
         """
         This method implements the inverse of the linear operator.
@@ -315,36 +315,36 @@ class InvertibleLinearOperator(SquareLinearOperator):
             x: torch.Tensor
                 The result of applying the inverse linear operator to the input tensor.
         """
-        if not hasattr(self, 'inverse_LinearOperator'):
-            return self.inverse_LinearOperator().forward(y)
+        if not hasattr(self, 'inverse_LinearSystem'):
+            return self.inverse_LinearSystem().forward(y)
         else:
-            raise NotImplementedError("For InvertibleLinearOperator, either the inverse method or the inverse_LinearOperator method must be implemented.")
+            raise NotImplementedError("For InvertibleLinearSystem, either the inverse method or the inverse_LinearSystem method must be implemented.")
     
-    def inverse_LinearOperator(self):
+    def inverse_LinearSystem(self):
         """
         This method returns the inverse of the linear operator.
 
         returns:
-            inverse: LinearOperator object
+            inverse: LinearSystem object
                 The inverse of the linear operator.
         """
         if not hasattr(self, 'inverse'):
-            return InverseLinearOperator(self)
+            return InverseLinearSystem(self)
         else:
-            raise NotImplementedError("For InvrtibleLinearOperator, either the inverse method or the inverse_LinearOperator method must be implemented.")
+            raise NotImplementedError("For InvrtibleLinearSystem, either the inverse method or the inverse_LinearSystem method must be implemented.")
         
-class UnitaryLinearOperator(InvertibleLinearOperator):
+class UnitaryLinearSystem(InvertibleLinearSystem):
     def __init__(self):
         """
         This is an abstract class for unitary linear operators.
 
-        It inherits from InvertibleLinearOperator.
+        It inherits from InvertibleLinearSystem.
 
         parameters:
             None
         """
 
-        super(UnitaryLinearOperator, self).__init__()
+        super(UnitaryLinearSystem, self).__init__()
 
     def inverse(self, y: torch.Tensor) -> torch.Tensor:
         """
@@ -360,48 +360,48 @@ class UnitaryLinearOperator(InvertibleLinearOperator):
         # for unitary linear operators, the inverse is the conjugate transpose
         return self.conjugate_transpose(y)
 
-    def inverse_LinearOperator(self):
-        return self.conjugate_transpose_LinearOperator()
+    def inverse_LinearSystem(self):
+        return self.conjugate_transpose_LinearSystem()
 
 
-class HermitianLinearOperator(SquareLinearOperator):
+class HermitianLinearSystem(SquareLinearSystem):
     def __init__(self):
         """
         This is an abstract class for Hermitian, or self-adjoint linear operators.
 
-        It inherits from SquareLinearOperator.
+        It inherits from SquareLinearSystem.
 
         parameters:
             None
         """
 
-        super(HermitianLinearOperator, self).__init__()
+        super(HermitianLinearSystem, self).__init__()
 
     def conjugate_transpose(self, y: torch.Tensor) -> torch.Tensor:
         return self.forward(y)
     
-    def conjugate_transpose_LinearOperator(self):
+    def conjugate_transpose_LinearSystem(self):
         return self
     
     def conjugate(self, x: torch.Tensor) -> torch.Tensor:
         return self.transpose(x)
     
-    def conjugate_LinearOperator(self):
-        return self.transpose_LinearOperator()
+    def conjugate_LinearSystem(self):
+        return self.transpose_LinearSystem()
     
 
-class SymmetricLinearOperator(SquareLinearOperator):
+class SymmetricLinearSystem(SquareLinearSystem):
     def __init__(self):
         """
         This is an abstract class for Symmetric linear operators.
 
-        It inherits from SquareLinearOperator.
+        It inherits from SquareLinearSystem.
 
         parameters:
             None
         """
 
-        super(SymmetricLinearOperator, self).__init__()
+        super(SymmetricLinearSystem, self).__init__()
 
     def transpose(self, y: torch.Tensor) -> torch.Tensor:
         """
@@ -429,22 +429,22 @@ class SymmetricLinearOperator(SquareLinearOperator):
         """
         return self.conjugate(y)
     
-    def transpose_LinearOperator(self):
+    def transpose_LinearSystem(self):
         return self
     
-class ScalarLinearOperator(SymmetricLinearOperator, InvertibleLinearOperator):
+class Scalar(SymmetricLinearSystem, InvertibleLinearSystem):
     def __init__(self, scalar):
         """
         This class implements a scalar linear operator.
 
-        It inherits from SymmetricLinearOperator.
+        It inherits from SymmetricLinearSystem.
 
         parameters:
             scalar: float
                 The scalar to multiply the input tensor with.
         """
 
-        super(ScalarLinearOperator, self).__init__()
+        super(Scalar, self).__init__()
 
         # if scalar is a float, convert it to a tensor
         if isinstance(scalar, (int, float)):
@@ -491,27 +491,27 @@ class ScalarLinearOperator(SymmetricLinearOperator, InvertibleLinearOperator):
             raise ValueError("The scalar is zero, so the inverse does not exist.")
         return y / self.scalar
     
-    def inverse_LinearOperator(self):
+    def inverse_LinearSystem(self):
         if torch.any(self.scalar == 0):
             raise ValueError("The scalar is zero, so the inverse does not exist.")
-        return ScalarLinearOperator(1/self.scalar)
+        return Scalar(1/self.scalar)
     
-    def sqrt_LinearOperator(self):
-        return ScalarLinearOperator(torch.sqrt(self.scalar))
+    def sqrt_LinearSystem(self):
+        return Scalar(torch.sqrt(self.scalar))
 
     def mat_add(self, added_scalar_matrix):
-        assert isinstance(added_scalar_matrix, (ScalarLinearOperator)), "ScalarLinearOperator addition only supported for ScalarLinearOperator." 
-        return ScalarLinearOperator(self.scalar + added_scalar_matrix.scalar)
+        assert isinstance(added_scalar_matrix, (Scalar)), "Scalar addition only supported for Scalar." 
+        return Scalar(self.scalar + added_scalar_matrix.scalar)
     
     def mat_sub(self, sub_scalar_matrix):
-        assert isinstance(sub_scalar_matrix, (ScalarLinearOperator)), "ScalarLinearOperator subtraction only supported for ScalarLinearOperator." 
-        return ScalarLinearOperator(self.scalar - sub_scalar_matrix.scalar)
+        assert isinstance(sub_scalar_matrix, (Scalar)), "Scalar subtraction only supported for Scalar." 
+        return Scalar(self.scalar - sub_scalar_matrix.scalar)
 
     def mat_mul(self, mul_scalar_matrix):
         if isinstance(mul_scalar_matrix, torch.Tensor):
             return self.forward(mul_scalar_matrix)
-        elif isinstance(mul_scalar_matrix, ScalarLinearOperator):
-            return ScalarLinearOperator(self.scalar * mul_scalar_matrix.scalar)
+        elif isinstance(mul_scalar_matrix, Scalar):
+            return Scalar(self.scalar * mul_scalar_matrix.scalar)
         else:
             raise ValueError("Unsupported type for matrix multiplication.")
         
@@ -520,12 +520,12 @@ class ScalarLinearOperator(SymmetricLinearOperator, InvertibleLinearOperator):
     
 
 
-class DiagonalLinearOperator(SymmetricLinearOperator, InvertibleLinearOperator):
+class DiagonalScalar(SymmetricLinearSystem, InvertibleLinearSystem):
     def __init__(self, diagonal_vector):
         """
         This class implements a diagonal linear operator.
 
-        It inherits from SquareLinearOperator.
+        It inherits from SquareLinearSystem.
 
         parameters:
             input_shape: tuple of integers
@@ -534,7 +534,7 @@ class DiagonalLinearOperator(SymmetricLinearOperator, InvertibleLinearOperator):
                 The diagonal of the linear operator.
         """
 
-        super(DiagonalLinearOperator, self).__init__()
+        super(DiagonalScalar, self).__init__()
 
         self.diagonal_vector = diagonal_vector
     
@@ -559,41 +559,41 @@ class DiagonalLinearOperator(SymmetricLinearOperator, InvertibleLinearOperator):
             raise ValueError("The diagonal vector contains zeros, so the inverse does not exist.")
         return y / self.diagonal_vector
     
-    def inverse_LinearOperator(self):
+    def inverse_LinearSystem(self):
         if torch.any(self.diagonal_vector == 0):
             raise ValueError("The diagonal vector contains zeros, so the inverse does not exist.")
-        return DiagonalLinearOperator(self.input_shape, 1/self.diagonal_vector)
+        return DiagonalScalar(self.input_shape, 1/self.diagonal_vector)
     
-    def sqrt_LinearOperator(self):
-        return DiagonalLinearOperator(torch.sqrt(self.diagonal_vector))
+    def sqrt_LinearSystem(self):
+        return DiagonalScalar(torch.sqrt(self.diagonal_vector))
 
     def mat_add(self, added_diagonal_matrix):
-        assert isinstance(added_diagonal_matrix, (DiagonalLinearOperator)), "DiagonalLinearOperator addition only supported for DiagonalLinearOperator." 
-        assert self.input_shape == added_diagonal_matrix.input_shape, "DiagonalLinearOperator addition only supported for DiagonalLinearOperator with same input shape."
-        return DiagonalLinearOperator(self.diagonal_vector + added_diagonal_matrix.diagonal_vector)
+        assert isinstance(added_diagonal_matrix, (DiagonalScalar)), "DiagonalScalar addition only supported for DiagonalScalar." 
+        assert self.input_shape == added_diagonal_matrix.input_shape, "DiagonalScalar addition only supported for DiagonalScalar with same input shape."
+        return DiagonalScalar(self.diagonal_vector + added_diagonal_matrix.diagonal_vector)
 
     def mat_sub(self, sub_diagonal_matrix):
-        assert isinstance(sub_diagonal_matrix, (DiagonalLinearOperator)), "DiagonalLinearOperator subtraction only supported for DiagonalLinearOperator." 
-        assert self.input_shape == sub_diagonal_matrix.input_shape, "DiagonalLinearOperator subtraction only supported for DiagonalLinearOperator with same input shape."
-        return DiagonalLinearOperator(self.diagonal_vector - sub_diagonal_matrix.diagonal_vector)
+        assert isinstance(sub_diagonal_matrix, (DiagonalScalar)), "DiagonalScalar subtraction only supported for DiagonalScalar." 
+        assert self.input_shape == sub_diagonal_matrix.input_shape, "DiagonalScalar subtraction only supported for DiagonalScalar with same input shape."
+        return DiagonalScalar(self.diagonal_vector - sub_diagonal_matrix.diagonal_vector)
     
     def mat_mul(self, mul_diagonal_matrix):
-        assert isinstance(mul_diagonal_matrix, (DiagonalLinearOperator)), "DiagonalLinearOperator multiplication only supported for DiagonalLinearOperator." 
-        assert self.input_shape == mul_diagonal_matrix.input_shape, "DiagonalLinearOperator multiplication only supported for DiagonalLinearOperator with same input shape."
-        return DiagonalLinearOperator(self.diagonal_vector * mul_diagonal_matrix.diagonal_vector)
+        assert isinstance(mul_diagonal_matrix, (DiagonalScalar)), "DiagonalScalar multiplication only supported for DiagonalScalar." 
+        assert self.input_shape == mul_diagonal_matrix.input_shape, "DiagonalScalar multiplication only supported for DiagonalScalar with same input shape."
+        return DiagonalScalar(self.diagonal_vector * mul_diagonal_matrix.diagonal_vector)
 
-class IdentityLinearOperator(RealLinearOperator, UnitaryLinearOperator, HermitianLinearOperator, SymmetricLinearOperator):
+class Identity(RealLinearSystem, UnitaryLinearSystem, HermitianLinearSystem, SymmetricLinearSystem):
     def __init__(self):
         """
         This class implements the identity linear operator.
 
-        It inherits from SquareLinearOperator.
+        It inherits from SquareLinearSystem.
 
         parameters:
             None
         """
 
-        SquareLinearOperator.__init__(self)
+        SquareLinearSystem.__init__(self)
 
     def forward(self, x):
         """
@@ -611,20 +611,20 @@ class IdentityLinearOperator(RealLinearOperator, UnitaryLinearOperator, Hermitia
 
 
 
-class ConjugateLinearOperator(LinearOperator):
-    def __init__(self, base_matrix_operator: LinearOperator):
+class ConjugateLinearSystem(LinearSystem):
+    def __init__(self, base_matrix_operator: LinearSystem):
         """
         This is an abstract class for linear operators that are the conjugate of another linear operator.
 
-        It inherits from LinearOperator.
+        It inherits from LinearSystem.
 
         parameters:
-            base_matrix_operator: LinearOperator object
+            base_matrix_operator: LinearSystem object
                 The linear operator to which the conjugate should be applied.
         """
             
-        assert isinstance(base_matrix_operator, LinearOperator), "The linear operator should be a LinearOperator object."
-        super(ConjugateLinearOperator, self).__init__(base_matrix_operator.output_shape, base_matrix_operator.input_shape)
+        assert isinstance(base_matrix_operator, LinearSystem), "The linear operator should be a LinearSystem object."
+        super(ConjugateLinearSystem, self).__init__(base_matrix_operator.output_shape, base_matrix_operator.input_shape)
 
         self.base_matrix_operator = base_matrix_operator  
         
@@ -640,21 +640,21 @@ class ConjugateLinearOperator(LinearOperator):
     def conjugate_transpose(self, y: torch.Tensor) -> torch.Tensor:
         return self.base_matrix_operator.transpose(y)
     
-class TransposeLinearOperator(LinearOperator):
-    def __init__(self, base_matrix_operator: LinearOperator):
+class TransposeLinearSystem(LinearSystem):
+    def __init__(self, base_matrix_operator: LinearSystem):
         """
         This is an abstract class for linear operators that are the transpose of another linear operator.
 
-        It inherits from LinearOperator.
+        It inherits from LinearSystem.
 
         parameters:
-            base_matrix_operator: LinearOperator object
+            base_matrix_operator: LinearSystem object
                 The linear operator to which the conjugate should be applied.
         """
             
-        assert isinstance(base_matrix_operator, LinearOperator), "The linear operator should be a LinearOperator object."
+        assert isinstance(base_matrix_operator, LinearSystem), "The linear operator should be a LinearSystem object."
 
-        super(TransposeLinearOperator, self).__init__()
+        super(TransposeLinearSystem, self).__init__()
 
         self.base_matrix_operator = base_matrix_operator  
         
@@ -670,21 +670,21 @@ class TransposeLinearOperator(LinearOperator):
     def conjugate_transpose(self, y: torch.Tensor) -> torch.Tensor:
         return self.base_matrix_operator.conjugate(y)
 
-class ConjugateTransposeLinearOperator(LinearOperator):
-    def __init__(self, base_matrix_operator: LinearOperator):
+class ConjugateTransposeLinearSystem(LinearSystem):
+    def __init__(self, base_matrix_operator: LinearSystem):
         """
         This is an abstract class for linear operators that are the conjugate transpose of another linear operator.
 
-        It inherits from LinearOperator.
+        It inherits from LinearSystem.
 
         parameters:
-            base_matrix_operator: LinearOperator object
+            base_matrix_operator: LinearSystem object
                 The linear operator to which the conjugate should be applied.
         """
             
-        assert isinstance(base_matrix_operator, LinearOperator), "The linear operator should be a LinearOperator object."
+        assert isinstance(base_matrix_operator, LinearSystem), "The linear operator should be a LinearSystem object."
 
-        super(ConjugateTransposeLinearOperator, self).__init__(base_matrix_operator.output_shape, base_matrix_operator.input_shape)
+        super(ConjugateTransposeLinearSystem, self).__init__(base_matrix_operator.output_shape, base_matrix_operator.input_shape)
 
         self.base_matrix_operator = base_matrix_operator
         
@@ -701,47 +701,47 @@ class ConjugateTransposeLinearOperator(LinearOperator):
         return self.base_matrix_operator.forward(y)
     
 
-class InverseLinearOperator(InvertibleLinearOperator):
-    def __init__(self, base_matrix_operator: InvertibleLinearOperator):
+class InverseLinearSystem(InvertibleLinearSystem):
+    def __init__(self, base_matrix_operator: InvertibleLinearSystem):
         """
         This is an abstract class for linear operators that are the inverse of another linear operator.
 
-        It inherits from SquareLinearOperator.
+        It inherits from SquareLinearSystem.
 
         parameters:
-            base_matrix_operator: LinearOperator object
+            base_matrix_operator: LinearSystem object
                 The linear operator to which the inverse should be applied.
         """
-        assert isinstance(base_matrix_operator, InvertibleLinearOperator), "The input linear operator should be a InvertibleLinearOperator object."
+        assert isinstance(base_matrix_operator, InvertibleLinearSystem), "The input linear operator should be a InvertibleLinearSystem object."
 
-        super(InverseLinearOperator, self).__init__()
+        super(InverseLinearSystem, self).__init__()
 
         self.base_matrix_operator = base_matrix_operator
         
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.base_matrix_operator.inverse(x)
     
-    def inverse_LinearOperator(self):
-        return self.base_matrix_operator.forward_LinearOperator()
+    def inverse_LinearSystem(self):
+        return self.base_matrix_operator.forward_LinearSystem()
 
-class CompositeLinearOperator(LinearOperator):
+class CompositeLinearSystem(LinearSystem):
     def __init__(self, matrix_operators):
         """
         This class represents the matrix-matrix product of multiple linear operators.
 
-        It inherits from LinearOperator.
+        It inherits from LinearSystem.
 
         parameters:
-            operators: list of LinearOperator objects
+            operators: list of LinearSystem objects
                 The list of linear operators to be composed. The product is taken in the order they are provided.
         """
 
-        assert isinstance(matrix_operators, list), "The operators should be provided as a list of LinearOperator objects."
+        assert isinstance(matrix_operators, list), "The operators should be provided as a list of LinearSystem objects."
         assert len(matrix_operators) > 0, "At least one operator should be provided."
         for operator in matrix_operators:
-            assert isinstance(operator, LinearOperator), "All operators should be LinearOperator objects."
+            assert isinstance(operator, LinearSystem), "All operators should be LinearSystem objects."
 
-        LinearOperator.__init__(self)
+        LinearSystem.__init__(self)
 
         self.matrix_operators = matrix_operators
 
@@ -767,20 +767,20 @@ class CompositeLinearOperator(LinearOperator):
 
 
 
-class InvertibleCompositeLinearOperator(CompositeLinearOperator, InvertibleLinearOperator):
+class InvertibleCompositeLinearSystem(CompositeLinearSystem, InvertibleLinearSystem):
     def __init__(self, matrix_operators):
         """
         This class represents the matrix-matrix product of multiple linear operators.
 
-        It inherits from LinearOperator.
+        It inherits from LinearSystem.
 
         parameters:
-            operators: list of LinearOperator objects
+            operators: list of LinearSystem objects
                 The list of linear operators to be composed. The product is taken in the order they are provided.
         """
         for operator in matrix_operators:
-            assert isinstance(operator, InvertibleLinearOperator), "All operators should be InvertibleLinearOperator objects."
-        CompositeLinearOperator.__init__(self, matrix_operators)
+            assert isinstance(operator, InvertibleLinearSystem), "All operators should be InvertibleLinearSystem objects."
+        CompositeLinearSystem.__init__(self, matrix_operators)
 
     def inverse(self, y):
         result = y
@@ -788,62 +788,62 @@ class InvertibleCompositeLinearOperator(CompositeLinearOperator, InvertibleLinea
             result = matrix_operator.inverse(result)
         return result
     
-    def inverse_LinearOperator(self):
-        return CompositeLinearOperator([operator.inverse_LinearOperator() for operator in reversed(self.matrix_operators)])
+    def inverse_LinearSystem(self):
+        return CompositeLinearSystem([operator.inverse_LinearSystem() for operator in reversed(self.matrix_operators)])
 
-class EigenDecomposedLinearOperator(CompositeLinearOperator, SymmetricLinearOperator):
-    def __init__(self, eigenvalue_matrix: DiagonalLinearOperator, eigenvector_matrix: InvertibleLinearOperator):
+class EigenDecomposedLinearSystem(CompositeLinearSystem, SymmetricLinearSystem):
+    def __init__(self, eigenvalue_matrix: DiagonalScalar, eigenvector_matrix: InvertibleLinearSystem):
         """
         This class represents a linear operator that is given by its eigenvalue decomposition.
 
-        It inherits from CompositeLinearOperator and SymmetricLinearOperator
+        It inherits from CompositeLinearSystem and SymmetricLinearSystem
 
         parameters:
-            eigenvalue_matrix: DiagonalLinearOperator object
+            eigenvalue_matrix: DiagonalScalar object
                 The diagonal matrix of eigenvalues.
-            eigenvector_matrix: InvertibleLinearOperator object
+            eigenvector_matrix: InvertibleLinearSystem object
                 The invertible matrix of eigenvectors.
         """
 
-        assert isinstance(eigenvalue_matrix, DiagonalLinearOperator), "The eigenvalues should be a DiagonalLinearOperator object."
-        assert isinstance(eigenvector_matrix, InvertibleLinearOperator), "The eigenvectors should be a InvertibleLinearOperator object."
+        assert isinstance(eigenvalue_matrix, DiagonalScalar), "The eigenvalues should be a DiagonalScalar object."
+        assert isinstance(eigenvector_matrix, InvertibleLinearSystem), "The eigenvectors should be a InvertibleLinearSystem object."
 
         self.eigenvalue_matrix = eigenvalue_matrix
         self.eigenvectors = eigenvector_matrix
 
-        operators = [eigenvector_matrix, eigenvalue_matrix, eigenvector_matrix.inverse_LinearOperator()]
+        operators = [eigenvector_matrix, eigenvalue_matrix, eigenvector_matrix.inverse_LinearSystem()]
 
-        CompositeLinearOperator.__init__(self, operators)
-
-
+        CompositeLinearSystem.__init__(self, operators)
 
 
 
 
 
-class SingularValueDecomposedLinearOperator(CompositeLinearOperator):
-    def __init__(self, left_singular_vector_matrix: UnitaryLinearOperator, singular_value_matrix: DiagonalLinearOperator,  right_singular_vector_matrix: UnitaryLinearOperator):
+
+
+class SingularValueDecomposedLinearSystem(CompositeLinearSystem):
+    def __init__(self, left_singular_vector_matrix: UnitaryLinearSystem, singular_value_matrix: DiagonalScalar,  right_singular_vector_matrix: UnitaryLinearSystem):
         """
         This class represents a linear operator that is given by its singular value decomposition.
 
-        It inherits from SquareLinearOperator.
+        It inherits from SquareLinearSystem.
 
         parameters:
-            singular_values: DiagonalLinearOperator object
+            singular_values: DiagonalScalar object
                 The diagonal matrix of singular values.
-            left_singular_vectors: UnitaryLinearOperator object
+            left_singular_vectors: UnitaryLinearSystem object
                 The matrix of left singular vectors.
-            right_singular_vectors: UnitaryLinearOperator object
+            right_singular_vectors: UnitaryLinearSystem object
                 The matrix of right singular vectors.
         """
 
-        assert isinstance(singular_value_matrix, DiagonalLinearOperator), "The singular values should be a DiagonalLinearOperator object."
-        assert isinstance(left_singular_vector_matrix, UnitaryLinearOperator), "The left singular vectors should be a UnitaryLinearOperator object."
-        assert isinstance(right_singular_vector_matrix, UnitaryLinearOperator), "The right singular vectors should be a UnitaryLinearOperator object."
+        assert isinstance(singular_value_matrix, DiagonalScalar), "The singular values should be a DiagonalScalar object."
+        assert isinstance(left_singular_vector_matrix, UnitaryLinearSystem), "The left singular vectors should be a UnitaryLinearSystem object."
+        assert isinstance(right_singular_vector_matrix, UnitaryLinearSystem), "The right singular vectors should be a UnitaryLinearSystem object."
 
-        operators = [left_singular_vector_matrix, singular_value_matrix, right_singular_vector_matrix.conjugate_transpose_LinearOperator()]
+        operators = [left_singular_vector_matrix, singular_value_matrix, right_singular_vector_matrix.conjugate_transpose_LinearSystem()]
 
-        super(SingularValueDecomposedLinearOperator, self).__init__(operators)
+        super(SingularValueDecomposedLinearSystem, self).__init__(operators)
 
         self.singular_values = singular_value_matrix
         self.left_singular_vectors = left_singular_vector_matrix

@@ -46,20 +46,20 @@ class UniformDistribution(Distribution):
 #         super(GaussianDistribution, self).__init__()
 
 #         assert isinstance(mu, torch.Tensor)
-#         assert isinstance(Sigma, LinearOperator)
+#         assert isinstance(Sigma, LinearSystem)
 
 #         self.mu = mu
 #         self.Sigma = Sigma
 
 #     def sample(self):
 #         white_noise = torch.randn(self.mu.shape, device=self.mu.device)
-#         sqrt_Sigma = self.Sigma.sqrt_LinearOperator()
+#         sqrt_Sigma = self.Sigma.sqrt_LinearSystem()
 #         correlated_noise =  sqrt_Sigma @ white_noise
 #         return self.mu + correlated_noise
     
 #     def mahalanobis_distance(self, x):
 #         res = (x - self.mu)
-#         weighted_res = self.Sigma.inv_LinearOperator() @ res
+#         weighted_res = self.Sigma.inv_LinearSystem() @ res
 #         return torch.sum(res * weighted_res)
     
 #     def log_prob(self, x):

@@ -1,9 +1,9 @@
 
 import torch
 
-from .core import RealLinearOperator
+from .core import RealLinearSystem
 
-class Pad(RealLinearOperator):
+class Pad(RealLinearSystem):
     def __init__(self, input_shape, pad_width, mode='constant', value=0):
         """
         This class implements a padding operator that can be used in a PyTorch model.

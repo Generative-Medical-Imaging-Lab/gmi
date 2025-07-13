@@ -4,9 +4,9 @@ import torch
 import torch.nn as nn
 import torch
 from torch.autograd.functional import jacobian
-from ..linear_operator import LinearOperator
-from ..linear_operator import InvertibleLinearOperator, SymmetricLinearOperator
-from ..linear_operator import ScalarLinearOperator, DiagonalLinearOperator, FourierLinearOperator
+from ..linear_system import LinearSystem
+from ..linear_system import InvertibleLinearSystem, SymmetricLinearSystem
+from ..linear_system import Scalar, DiagonalScalar, FourierFilter
 import numpy as np
 
 class StochasticDifferentialEquation(nn.Module):
@@ -23,7 +23,7 @@ class StochasticDifferentialEquation(nn.Module):
             f: callable
                 The drift term of the SDE. It should take x and t as input and return a tensor of the same shape as x.
             G: callable
-                The diffusion term of the SDE. It should take x and t as input and return a gmi.linear_operator.LinearOperator that can act on a tensor of the same shape as x.
+                The diffusion term of the SDE. It should take x and t as input and return a gmi.linear_system.LinearSystem that can act on a tensor of the same shape as x.
         """
 
         self.f = f
@@ -69,7 +69,7 @@ class StochasticDifferentialEquation(nn.Module):
 
         def _f_star(x, t):
             G_t = _G(x, t)
-            G_tT = G_t.transpose_LinearOperator()
+            G_tT = G_t.transpose_LinearSystem()
             GG_T = lambda v: G_t(G_tT(v))  # Define GG_T as a function to apply G_t and its transpose
 
             div_GG_T = compute_divergence_fn(GG_T, x)
@@ -173,7 +173,7 @@ class StochasticDifferentialEquation(nn.Module):
         assert _f.shape == x.shape, "The drift term f(x, t) should return a tensor of the same shape as x."
         
         _G = self.G(x, t)
-        assert isinstance(_G, LinearOperator), "The diffusion term G(x, t) should return a LinearOperator."
+        assert isinstance(_G, LinearSystem), "The diffusion term G(x, t) should return a LinearSystem."
         
         _f_dt = _f * dt
         _G_dw = _G @ dw
@@ -230,29 +230,29 @@ class LinearSDE(StochasticDifferentialEquation):
 
         Parameters:
             H: callable
-                Function that returns an InvertibleLinearOperator representing the system response.
+                Function that returns an InvertibleLinearSystem representing the system response.
             Sigma: callable
-                Function that returns a SymmetricLinearOperator representing the covariance.
+                Function that returns a SymmetricLinearSystem representing the covariance.
             H_prime: callable, optional
                 Function that returns the time derivative of H. If not provided, it will be computed automatically.
             Sigma_prime: callable, optional
                 Function that returns the time derivative of Sigma. If not provided, it will be computed automatically.
             F: callable, optional
-                Function that returns a LinearOperator representing the drift term. If not provided, it will be computed from H_prime and H.
+                Function that returns a LinearSystem representing the drift term. If not provided, it will be computed from H_prime and H.
             G: callable, optional
-                Function that returns a LinearOperator representing the diffusion term. If not provided, it will be computed from Sigma_prime, F, and Sigma.
+                Function that returns a LinearSystem representing the diffusion term. If not provided, it will be computed from Sigma_prime, F, and Sigma.
 
         Requirements:
-            - H must return an InvertibleLinearOperator.
-            - Sigma must return a SymmetricLinearOperator.
+            - H must return an InvertibleLinearSystem.
+            - Sigma must return a SymmetricLinearSystem.
             - The @ operator must be implemented for matrix-matrix multiplication of F, Sigma, and their transposes.
-            - The addition, subtraction, and sqrt_LinearOperator methods must be implemented for the resulting matrix operations on Sigma_prime and others.
+            - The addition, subtraction, and sqrt_LinearSystem methods must be implemented for the resulting matrix operations on Sigma_prime and others.
 
         If H_prime and Sigma_prime are not provided, they will be computed using automatic differentiation.
         """
 
-        assert isinstance(H(0), InvertibleLinearOperator), "H(t) must return an InvertibleLinearOperator."
-        assert isinstance(Sigma(0), SymmetricLinearOperator), "Sigma(t) must return a SymmetricLinearOperator."
+        assert isinstance(H(0), InvertibleLinearSystem), "H(t) must return an InvertibleLinearSystem."
+        assert isinstance(Sigma(0), SymmetricLinearSystem), "Sigma(t) must return a SymmetricLinearSystem."
 
         self.H = H
         self.Sigma = Sigma
@@ -265,10 +265,10 @@ class LinearSDE(StochasticDifferentialEquation):
         assert Sigma_prime is not None or G is not None, "Either Sigma_prime or G must be provided."
 
         if F is None and H_prime is not None:
-            self.F = lambda t: self.H_prime(t) @ self.H(t).inverse_LinearOperator()
+            self.F = lambda t: self.H_prime(t) @ self.H(t).inverse_LinearSystem()
 
         if self._G is None and Sigma_prime is not None:
-            self._G = lambda t: (self.Sigma_prime(t) - self.F(t) @ self.Sigma(t) - self.Sigma(t) @ self.F(t).transpose_LinearOperator()).sqrt_LinearOperator()
+            self._G = lambda t: (self.Sigma_prime(t) - self.F(t) @ self.Sigma(t) - self.Sigma(t) @ self.F(t).transpose_LinearSystem()).sqrt_LinearSystem()
 
         _f = lambda x, t: self.F(t) @ x
         _G = lambda x, t: self._G(t)
@@ -302,7 +302,7 @@ class LinearSDE(StochasticDifferentialEquation):
 
         def _f_star(x, t):
             G_t = _G(t)
-            G_tT = G_t.transpose_LinearOperator()
+            G_tT = G_t.transpose_LinearSystem()
             GG_T = lambda v: G_t(G_tT(v))  # Define GG_T as a function to apply G_t and its transpose
 
             return _f(x, t) - GG_T(score_estimator(x, t))
@@ -329,7 +329,7 @@ class LinearSDE(StochasticDifferentialEquation):
 
         def score_estimator(x, t):
             mu_t = mean_estimator(x, t)
-            sigma_t_inv = self.Sigma(t).inverse_LinearOperator()
+            sigma_t_inv = self.Sigma(t).inverse_LinearSystem()
             return sigma_t_inv @ (x - mu_t)
 
         return self.reverse_SDE_given_score_estimator(score_estimator)   
@@ -366,7 +366,7 @@ class LinearSDE(StochasticDifferentialEquation):
         """
         mean_response = self.mean_response_x_t_given_x_0(x0, t)
         noise = torch.randn_like(x0)
-        Sigma_sqrtm = self.Sigma(t).sqrt_LinearOperator()
+        Sigma_sqrtm = self.Sigma(t).sqrt_LinearSystem()
         return mean_response + Sigma_sqrtm @ noise
 
     def reverse_SDE_given_mean_estimator(self, mean_estimator):
@@ -389,7 +389,7 @@ class LinearSDE(StochasticDifferentialEquation):
         
         def score_estimator(x, t):
             mu_t = mean_estimator(x, t)
-            sigma_t_inv = self.Sigma(t).inverse_LinearOperator()
+            sigma_t_inv = self.Sigma(t).inverse_LinearSystem()
             return sigma_t_inv @ (x - mu_t)
 
         return self.reverse_SDE_given_score_estimator(score_estimator)
@@ -415,16 +415,16 @@ class ScalarSDE(LinearSDE):
         assert isinstance(signal_scale(0), (float, torch.Tensor)), "signal_scale(t) must return a scalar."
         assert isinstance(noise_variance(0), (float, torch.Tensor)), "noise_variance(t) must return a scalar."
 
-        H = lambda t: ScalarLinearOperator(signal_scale(t))
-        Sigma = lambda t: ScalarLinearOperator(noise_variance(t))
+        H = lambda t: Scalar(signal_scale(t))
+        Sigma = lambda t: Scalar(noise_variance(t))
 
         if signal_scale_prime is None:
             signal_scale_prime = lambda t: torch.autograd.grad(signal_scale(t), t, create_graph=True)[0]
         if noise_variance_prime is None:
             noise_variance_prime = lambda t: torch.autograd.grad(noise_variance(t), t, create_graph=True)[0]
 
-        H_prime = lambda t: ScalarLinearOperator(signal_scale_prime(t))
-        Sigma_prime = lambda t: ScalarLinearOperator(noise_variance_prime(t))
+        H_prime = lambda t: Scalar(signal_scale_prime(t))
+        Sigma_prime = lambda t: Scalar(noise_variance_prime(t))
 
         super(ScalarSDE, self).__init__(H, Sigma, H_prime, Sigma_prime)
 
@@ -446,16 +446,16 @@ class DiagonalSDE(LinearSDE):
         assert isinstance(signal_scale(0), (torch.Tensor)), "signal_scale(t) must return a diagonal vector."
         assert isinstance(noise_variance(0), (torch.Tensor)), "noise_variance(t) must return a diagonal vector."
 
-        H = lambda t: DiagonalLinearOperator(signal_scale(t))
-        Sigma = lambda t: DiagonalLinearOperator(noise_variance(t))
+        H = lambda t: DiagonalScalar(signal_scale(t))
+        Sigma = lambda t: DiagonalScalar(noise_variance(t))
 
         if signal_scale_prime is None:
             signal_scale_prime = lambda t: torch.autograd.grad(signal_scale(t), t, create_graph=True)[0]
         if noise_variance_prime is None:
             noise_variance_prime = lambda t: torch.autograd.grad(noise_variance(t), t, create_graph=True)[0]
 
-        H_prime = lambda t: DiagonalLinearOperator(signal_scale_prime(t))
-        Sigma_prime = lambda t: DiagonalLinearOperator(noise_variance_prime(t))
+        H_prime = lambda t: DiagonalScalar(signal_scale_prime(t))
+        Sigma_prime = lambda t: DiagonalScalar(noise_variance_prime(t))
 
         super(DiagonalSDE, self).__init__(H, Sigma, H_prime, Sigma_prime)
 
@@ -480,16 +480,16 @@ class FourierSDE(LinearSDE):
         assert isinstance(transfer_function(0), (torch.Tensor)), "transfer_function(t) must return a Fourier filter."
         assert isinstance(noise_power_spectrum(0), (torch.Tensor)), "noise_power_spectrum(t) must return a Fourier filter."
 
-        H = lambda t: FourierLinearOperator(transfer_function(t), dim)
-        Sigma = lambda t: FourierLinearOperator(noise_power_spectrum(t), dim)
+        H = lambda t: FourierFilter(transfer_function(t), dim)
+        Sigma = lambda t: FourierFilter(noise_power_spectrum(t), dim)
 
         if transfer_function_prime is None:
             transfer_function_prime = lambda t: torch.autograd.grad(transfer_function(t), t, create_graph=True)[0]
         if noise_power_spectrum_prime is None:
             noise_power_spectrum_prime = lambda t: torch.autograd.grad(noise_power_spectrum(t), t, create_graph=True)[0]
 
-        H_prime = lambda t: FourierLinearOperator(transfer_function_prime(t), dim)
-        Sigma_prime = lambda t: FourierLinearOperator(noise_power_spectrum_prime(t), dim)
+        H_prime = lambda t: FourierFilter(transfer_function_prime(t), dim)
+        Sigma_prime = lambda t: FourierFilter(noise_power_spectrum_prime(t), dim)
 
         super(FourierSDE, self).__init__(H, Sigma, H_prime, Sigma_prime)
 

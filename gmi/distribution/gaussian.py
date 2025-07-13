@@ -3,27 +3,27 @@ from torch import nn
 
 from .core import Distribution
 
-from ..linear_operator import LinearOperator, ScalarLinearOperator
+from ..linear_system import LinearSystem, Scalar
 
 class GaussianDistribution(Distribution):
     def __init__(self, mu, Sigma):
         super(GaussianDistribution, self).__init__()
 
         assert isinstance(mu, torch.Tensor)
-        assert isinstance(Sigma, LinearOperator)
+        assert isinstance(Sigma, LinearSystem)
 
         self.mu = mu
         self.Sigma = Sigma
 
     def sample(self):
         white_noise = torch.randn(self.mu.shape, device=self.mu.device)
-        sqrt_Sigma = self.Sigma.sqrt_LinearOperator()
+        sqrt_Sigma = self.Sigma.sqrt_LinearSystem()
         correlated_noise =  sqrt_Sigma(white_noise)
         return self.mu + correlated_noise
     
     def mahalanobis_distance(self, x):
         res = (x - self.mu)
-        weighted_res = self.Sigma.inv_LinearOperator() @ res
+        weighted_res = self.Sigma.inv_LinearSystem() @ res
         return torch.sum(res * weighted_res)
     
     def log_prob(self, x):
@@ -38,7 +38,7 @@ class GaussianDistribution(Distribution):
         return  - 0.5 * mahalanobis_distance
     
     def score(self, x):
-        return self.Sigma.inv_LinearOperator() @ (self.mu - x)
+        return self.Sigma.inv_LinearSystem() @ (self.mu - x)
         
 
 
@@ -84,8 +84,8 @@ class LinearSystemGaussianNoise(ConditionalGaussianDistribution):
 class AdditiveWhiteGaussianNoise(ConditionalGaussianDistribution):
     def __init__(self, noise_standard_deviation):
         noise_variance = noise_standard_deviation ** 2
-        noise_covariance_linear_operator = ScalarLinearOperator(noise_variance)
+        noise_covariance_linear_system = Scalar(noise_variance)
         mu_fn = lambda y: y
-        Sigma_fn = lambda y: noise_covariance_linear_operator
+        Sigma_fn = lambda y: noise_covariance_linear_system
         super(AdditiveWhiteGaussianNoise, self).__init__(mu_fn, Sigma_fn)
         self.noise_variance = noise_variance

@@ -1,2 +1,0 @@
-_target_: gmi.linear_operator.diagonal.DiagonalLinearOperator
-diagonal_vector: [2.0, 3.0, 4.0]

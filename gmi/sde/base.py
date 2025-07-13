@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from ..linear_operator import LinearOperator
+from ..linear_system import LinearSystem
 
 
 class StochasticDifferentialEquation(nn.Module):
@@ -17,7 +17,7 @@ class StochasticDifferentialEquation(nn.Module):
             f: callable
                 The drift term of the SDE. It should take x and t as input and return a tensor of the same shape as x.
             G: callable
-                The diffusion term of the SDE. It should take x and t as input and return a gmi.linear_operator.LinearOperator that can act on a tensor of the same shape as x.
+                The diffusion term of the SDE. It should take x and t as input and return a gmi.linear_system.LinearSystem that can act on a tensor of the same shape as x.
         """
 
         super(StochasticDifferentialEquation, self).__init__()
@@ -70,7 +70,7 @@ class StochasticDifferentialEquation(nn.Module):
 
         def _f_star(x, t):
             G_t = _G(x, t)
-            G_tT = G_t.transpose_LinearOperator()
+            G_tT = G_t.transpose_LinearSystem()
             GG_T = lambda v: G_t(G_tT(v))  # Define GG_T as a function to apply G_t and its transpose
 
             div_GG_T = compute_divergence_fn(GG_T, x)
@@ -189,7 +189,7 @@ class StochasticDifferentialEquation(nn.Module):
         assert _f.shape == x.shape, "The drift term f(x, t) should return a tensor of the same shape as x."
         
         _G = self.G(x, t)
-        assert isinstance(_G, LinearOperator), "The diffusion term G(x, t) should return a LinearOperator."
+        assert isinstance(_G, LinearSystem), "The diffusion term G(x, t) should return a LinearSystem."
         
         _f_dt = _f * dt
         _G_dw = _G.forward(dw)

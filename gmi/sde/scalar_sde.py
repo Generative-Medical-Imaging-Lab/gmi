@@ -1,6 +1,6 @@
 import torch
 from .linear_sde import LinearSDE
-from ..linear_operator import ScalarLinearOperator
+from ..linear_system import Scalar
 
 
 class ScalarSDE(LinearSDE):
@@ -29,10 +29,10 @@ class ScalarSDE(LinearSDE):
         if noise_variance_prime is None:
             noise_variance_prime = lambda t: torch.autograd.grad(noise_variance(t), t, create_graph=True)[0]
 
-        H = lambda t: ScalarLinearOperator(signal_scale(t))
-        Sigma = lambda t: ScalarLinearOperator(noise_variance(t))
+        H = lambda t: Scalar(signal_scale(t))
+        Sigma = lambda t: Scalar(noise_variance(t))
 
-        H_prime = lambda t: ScalarLinearOperator(signal_scale_prime(t))
-        Sigma_prime = lambda t: ScalarLinearOperator(noise_variance_prime(t))
+        H_prime = lambda t: Scalar(signal_scale_prime(t))
+        Sigma_prime = lambda t: Scalar(noise_variance_prime(t))
 
         super(ScalarSDE, self).__init__(H, Sigma, H_prime, Sigma_prime) 

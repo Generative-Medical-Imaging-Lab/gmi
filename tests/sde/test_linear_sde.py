@@ -1,24 +1,24 @@
 import torch
 import pytest
 from gmi.sde import LinearSDE
-from gmi.linear_operator import ScalarLinearOperator, DiagonalLinearOperator
+from gmi.linear_system import Scalar, DiagonalScalar
 
 def test_linear_sde_instantiation():
     # Create simple H and Sigma functions
-    H = lambda t: ScalarLinearOperator(2.0 * t + 1.0)
-    Sigma = lambda t: ScalarLinearOperator(t**2 + 1.0)
-    H_prime = lambda t: ScalarLinearOperator(2.0)
-    Sigma_prime = lambda t: ScalarLinearOperator(2.0 * t)
+    H = lambda t: Scalar(2.0 * t + 1.0)
+    Sigma = lambda t: Scalar(t**2 + 1.0)
+    H_prime = lambda t: Scalar(2.0)
+    Sigma_prime = lambda t: Scalar(2.0 * t)
     
     sde = LinearSDE(H=H, Sigma=Sigma, H_prime=H_prime, Sigma_prime=Sigma_prime)
     assert isinstance(sde, LinearSDE)
 
 def test_linear_sde_mean_response():
     # Create simple H and Sigma functions
-    H = lambda t: ScalarLinearOperator(2.0 * t + 1.0)
-    Sigma = lambda t: ScalarLinearOperator(t**2 + 1.0)
-    H_prime = lambda t: ScalarLinearOperator(2.0)
-    Sigma_prime = lambda t: ScalarLinearOperator(2.0 * t)
+    H = lambda t: Scalar(2.0 * t + 1.0)
+    Sigma = lambda t: Scalar(t**2 + 1.0)
+    H_prime = lambda t: Scalar(2.0)
+    Sigma_prime = lambda t: Scalar(2.0 * t)
     
     sde = LinearSDE(H=H, Sigma=Sigma, H_prime=H_prime, Sigma_prime=Sigma_prime)
     
@@ -30,10 +30,10 @@ def test_linear_sde_mean_response():
 
 def test_linear_sde_sample_shapes():
     # Create simple H and Sigma functions
-    H = lambda t: ScalarLinearOperator(2.0 * t + 1.0)
-    Sigma = lambda t: ScalarLinearOperator(t**2 + 1.0)
-    H_prime = lambda t: ScalarLinearOperator(2.0)
-    Sigma_prime = lambda t: ScalarLinearOperator(2.0 * t)
+    H = lambda t: Scalar(2.0 * t + 1.0)
+    Sigma = lambda t: Scalar(t**2 + 1.0)
+    H_prime = lambda t: Scalar(2.0)
+    Sigma_prime = lambda t: Scalar(2.0 * t)
     
     sde = LinearSDE(H=H, Sigma=Sigma, H_prime=H_prime, Sigma_prime=Sigma_prime)
     
@@ -48,10 +48,10 @@ def test_linear_sde_sample_shapes():
 
 def test_linear_sde_diagonal():
     # Test with diagonal operators
-    H = lambda t: DiagonalLinearOperator(torch.ones(4) * (2.0 * t + 1.0))
-    Sigma = lambda t: DiagonalLinearOperator(torch.ones(4) * (t**2 + 1.0))
-    H_prime = lambda t: DiagonalLinearOperator(torch.ones(4) * 2.0)
-    Sigma_prime = lambda t: DiagonalLinearOperator(torch.ones(4) * (2.0 * t))
+    H = lambda t: DiagonalScalar(torch.ones(4) * (2.0 * t + 1.0))
+    Sigma = lambda t: DiagonalScalar(torch.ones(4) * (t**2 + 1.0))
+    H_prime = lambda t: DiagonalScalar(torch.ones(4) * 2.0)
+    Sigma_prime = lambda t: DiagonalScalar(torch.ones(4) * (2.0 * t))
     
     sde = LinearSDE(H=H, Sigma=Sigma, H_prime=H_prime, Sigma_prime=Sigma_prime)
     
@@ -66,10 +66,10 @@ def test_linear_sde_diagonal():
 
 def test_linear_sde_reverse_score_estimator():
     # Create simple H and Sigma functions
-    H = lambda t: ScalarLinearOperator(2.0 * t + 1.0)
-    Sigma = lambda t: ScalarLinearOperator(t**2 + 1.0)
-    H_prime = lambda t: ScalarLinearOperator(2.0)
-    Sigma_prime = lambda t: ScalarLinearOperator(2.0 * t)
+    H = lambda t: Scalar(2.0 * t + 1.0)
+    Sigma = lambda t: Scalar(t**2 + 1.0)
+    H_prime = lambda t: Scalar(2.0)
+    Sigma_prime = lambda t: Scalar(2.0 * t)
     
     sde = LinearSDE(H=H, Sigma=Sigma, H_prime=H_prime, Sigma_prime=Sigma_prime)
     
@@ -85,10 +85,10 @@ def test_linear_sde_reverse_score_estimator():
 
 def test_linear_sde_reverse_mean_estimator():
     # Create simple H and Sigma functions
-    H = lambda t: ScalarLinearOperator(2.0 * t + 1.0)
-    Sigma = lambda t: ScalarLinearOperator(t**2 + 1.0)
-    H_prime = lambda t: ScalarLinearOperator(2.0)
-    Sigma_prime = lambda t: ScalarLinearOperator(2.0 * t)
+    H = lambda t: Scalar(2.0 * t + 1.0)
+    Sigma = lambda t: Scalar(t**2 + 1.0)
+    H_prime = lambda t: Scalar(2.0)
+    Sigma_prime = lambda t: Scalar(2.0 * t)
     
     sde = LinearSDE(H=H, Sigma=Sigma, H_prime=H_prime, Sigma_prime=Sigma_prime)
     

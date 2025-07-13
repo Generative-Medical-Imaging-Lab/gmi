@@ -1,6 +1,6 @@
 import torch
 from .base import StochasticDifferentialEquation
-from ..linear_operator import InvertibleLinearOperator, SymmetricLinearOperator
+from ..linear_system import InvertibleLinearSystem, SymmetricLinearSystem
 
 
 class LinearSDE(StochasticDifferentialEquation):
@@ -12,29 +12,29 @@ class LinearSDE(StochasticDifferentialEquation):
 
         Parameters:
             H: callable
-                Function that returns an InvertibleLinearOperator representing the system response.
+                Function that returns an InvertibleLinearSystem representing the system response.
             Sigma: callable
-                Function that returns a SymmetricLinearOperator representing the covariance.
+                Function that returns a SymmetricLinearSystem representing the covariance.
             H_prime: callable, optional
                 Function that returns the time derivative of H. If not provided, it will be computed automatically.
             Sigma_prime: callable, optional
                 Function that returns the time derivative of Sigma. If not provided, it will be computed automatically.
             F: callable, optional
-                Function that returns a LinearOperator representing the drift term. If not provided, it will be computed from H_prime and H.
+                Function that returns a LinearSystem representing the drift term. If not provided, it will be computed from H_prime and H.
             G: callable, optional
-                Function that returns a LinearOperator representing the diffusion term. If not provided, it will be computed from Sigma_prime, F, and Sigma.
+                Function that returns a LinearSystem representing the diffusion term. If not provided, it will be computed from Sigma_prime, F, and Sigma.
 
         Requirements:
-            - H must return an InvertibleLinearOperator.
-            - Sigma must return a SymmetricLinearOperator.
+            - H must return an InvertibleLinearSystem.
+            - Sigma must return a SymmetricLinearSystem.
             - The @ operator must be implemented for matrix-matrix multiplication of F, Sigma, and their transposes.
-            - The addition, subtraction, and sqrt_LinearOperator methods must be implemented for the resulting matrix operations on Sigma_prime and others.
+            - The addition, subtraction, and sqrt_LinearSystem methods must be implemented for the resulting matrix operations on Sigma_prime and others.
 
         If H_prime and Sigma_prime are not provided, they will be computed using automatic differentiation.
         """
 
-        assert isinstance(H(0.0), InvertibleLinearOperator), "H(t) must return an InvertibleLinearOperator."
-        assert isinstance(Sigma(0.0), SymmetricLinearOperator), "Sigma(t) must return a SymmetricLinearOperator."
+        assert isinstance(H(0.0), InvertibleLinearSystem), "H(t) must return an InvertibleLinearSystem."
+        assert isinstance(Sigma(0.0), SymmetricLinearSystem), "Sigma(t) must return a SymmetricLinearSystem."
 
         self.H = H
         self.Sigma = Sigma
@@ -47,10 +47,10 @@ class LinearSDE(StochasticDifferentialEquation):
         assert Sigma_prime is not None or G is not None, "Either Sigma_prime or G must be provided."
 
         if F is None and H_prime is not None:
-            self.F = lambda t: self.H_prime(t) @ self.H(t).inverse_LinearOperator()
+            self.F = lambda t: self.H_prime(t) @ self.H(t).inverse_LinearSystem()
 
         if self._G is None and Sigma_prime is not None:
-            self._G = lambda t: (self.Sigma_prime(t) - self.F(t) @ self.Sigma(t) - self.Sigma(t) @ self.F(t).transpose_LinearOperator()).sqrt_LinearOperator()
+            self._G = lambda t: (self.Sigma_prime(t) - self.F(t) @ self.Sigma(t) - self.Sigma(t) @ self.F(t).transpose_LinearSystem()).sqrt_LinearSystem()
 
         _f = lambda x, t: self.F(t).forward(x)
         _G = lambda x, t: self._G(t)
@@ -84,7 +84,7 @@ class LinearSDE(StochasticDifferentialEquation):
 
         def _f_star(x, t):
             G_t = _G(x, t)
-            G_tT = G_t.transpose_LinearOperator()
+            G_tT = G_t.transpose_LinearSystem()
             GG_T = lambda v: G_t(G_tT(v))  # Define GG_T as a function to apply G_t and its transpose
 
             div_GG_T = compute_divergence(GG_T, x)
@@ -116,9 +116,9 @@ class LinearSDE(StochasticDifferentialEquation):
 
             Sigma_t = self.Sigma(t)
 
-            assert isinstance(Sigma_t, InvertibleLinearOperator), "Sigma(t) must be an InvertibleLinearOperator."
+            assert isinstance(Sigma_t, InvertibleLinearSystem), "Sigma(t) must be an InvertibleLinearSystem."
 
-            Sigma_t_inv = self.Sigma(t).inverse_LinearOperator()
+            Sigma_t_inv = self.Sigma(t).inverse_LinearSystem()
 
             mu_t = mean_estimator(x, t)
 
@@ -153,7 +153,7 @@ class LinearSDE(StochasticDifferentialEquation):
         
         def score_estimator(x, t):
             noise_t = noise_estimator(x, t)
-            sigma_t_sqrt_inv = self.Sigma(t).sqrt_LinearOperator().inverse_LinearOperator()
+            sigma_t_sqrt_inv = self.Sigma(t).sqrt_LinearSystem().inverse_LinearSystem()
             return -1.0*(sigma_t_sqrt_inv.forward(noise_t))
 
         return self.reverse_SDE_given_score_estimator(score_estimator)
@@ -223,7 +223,7 @@ class LinearSDE(StochasticDifferentialEquation):
         self.x_shape = x0.shape
 
         mean_response = self.mean_response_x_t_given_x_0(x0, t)
-        Sigma_sqrtm = self.Sigma(t).sqrt_LinearOperator()
+        Sigma_sqrtm = self.Sigma(t).sqrt_LinearSystem()
         return mean_response + Sigma_sqrtm.forward(noise)
 
     def reverse_SDE_given_posterior_mean_estimator(self, posterior_mean_estimator):
@@ -246,7 +246,7 @@ class LinearSDE(StochasticDifferentialEquation):
         
         def score_estimator(x, t):
             mu_t = posterior_mean_estimator(x, t)
-            sigma_t_inv = self.Sigma(t).inverse_LinearOperator()
+            sigma_t_inv = self.Sigma(t).inverse_LinearSystem()
             return sigma_t_inv.forward(x - mu_t)
 
         return self.reverse_SDE_given_score_estimator(score_estimator) 
