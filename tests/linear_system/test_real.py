@@ -21,7 +21,7 @@ class TestRealLinearSystem:
     def test_abstract_class_instantiation(self):
         """Test that RealLinearSystem cannot be instantiated directly (abstract class)."""
         with pytest.raises(TypeError, match="Can't instantiate abstract class"):
-            RealLinearSystem()
+            RealLinearSystem() # type: ignore
     
     def test_concrete_subclass_implementation(self, sample_vector_2):
         """Test that a concrete subclass works correctly."""

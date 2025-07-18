@@ -234,6 +234,127 @@ docker exec -it gmi-container python -c "import torch; print(f'CUDA available: {
 
 This development environment provides a controlled, reproducible setup for developing and testing the GMI package. The key is to understand that you're editing on the host but testing in the container, and the `docker exec` command is your bridge between the two.
 
+## 🖥️ GUI Display Configuration
+
+When running GUI applications from the Docker container on a remote Linux server and displaying on a local Windows machine, you need to configure X11 forwarding. This section explains how to set up the display environment for minimal command overhead.
+
+### Prerequisites
+
+1. **Windows X Server**: Install and run an X server on your Windows machine:
+   - **VcXsrv**: Download from [sourceforge](https://sourceforge.net/projects/vcxsrv/)
+   - **MobaXterm**: Includes built-in X server
+   - **WSL2**: If using WSL2, X server is typically available
+
+2. **Network Access**: Ensure your Windows machine can accept X11 connections from your Linux server
+
+### Setup Steps
+
+#### 1. Configure Windows X Server
+
+**For VcXsrv:**
+```bash
+# Start VcXsrv with these settings:
+vcxsrv.exe :0 -multiwindow -ac -nowgl
+```
+- `-ac` disables access control (for testing - use `xhost` for production)
+- `-nowgl` disables OpenGL acceleration if not needed
+
+**For MobaXterm:**
+- X server is typically started automatically
+- Access control is usually disabled by default
+
+#### 2. Allow Remote Connections (from Windows)
+
+From your Windows machine, allow your Linux server to connect:
+```bash
+# Allow specific IP (replace with your Linux server IP)
+xhost + 10.251.165.3
+# Or allow all connections (less secure, for testing only)
+xhost +
+```
+
+#### 3. Set Display Variable on Linux Server
+
+Before starting the Docker container, set the DISPLAY environment variable:
+```bash
+# Set your Windows machine's IP address
+export DISPLAY=10.251.165.7:0
+# Verify the variable is set
+echo $DISPLAY
+```
+
+#### 4. Start Container with Display Configuration
+
+The `docker-compose.yml` is already configured to pass the DISPLAY variable to the container:
+
+```yaml
+environment:
+  - PYTHONPATH=/gmi_base
+  - DISPLAY=${DISPLAY:-:0}
+```
+
+Start the container:
+```bash
+docker compose up -d
+```
+
+#### 5. Run GUI Applications
+
+Now you can run GUI applications without specifying DISPLAY in every command:
+```bash
+# Run GUI application (no need for -e DISPLAY=...)
+docker exec -it gmi-container python gui.py
+
+# Or run from inside the container
+docker exec -it gmi-container bash
+python gui.py
+```
+
+### Minimal Setup Commands
+
+Here's the complete minimal setup sequence:
+
+```bash
+# 1. Set display variable (replace with your Windows IP)
+export DISPLAY=10.251.165.7:0
+# 2. Start container
+docker compose up -d
+# 3. Run GUI application
+docker exec -it gmi-container python gui.py
+```
+
+### Troubleshooting
+
+**Common Issues:**
+
+1. **"Could not connect to display" error:**
+   - Verify DISPLAY variable is set correctly
+   - Check network connectivity: `nc -zv <windows_ip> 6000`
+   - Ensure X server is running on Windows
+   - Verify `xhost +` was run on Windows
+2. **"Qt platform plugin could not be initialized" error:**
+   - The container already includes necessary Qt dependencies
+   - This usually indicates a display connection issue, not missing libraries
+3. **"XDG_RUNTIME_DIR not set" warning:**
+   - This is a harmless warning and doesn't affect functionality
+   - Can be ignored or set with: `export XDG_RUNTIME_DIR=/tmp/runtime-gmi_user`
+
+**Testing Display Connection:**
+```bash
+# Test basic X11 connection
+docker exec -it gmi-container xclock
+
+# Test with a simple Qt application
+docker exec -it gmi-container python -c "import sys; from PyQt5.QtWidgets import QApplication, QLabel; app = QApplication(sys.argv); label = QLabel('Hello from Docker!'); label.show(); app.exec_()"
+```
+
+### Security Considerations
+
+For production use, consider these security improvements:
+- Use `xhost + <specific_ip>` instead of `xhost +`
+- Configure firewall rules to restrict X11 traffic
+- Use SSH X11 forwarding as an alternative to direct X11 connections
+
 ## 🎯 Core Features
 
 ### 1. Image Reconstruction Tasks
