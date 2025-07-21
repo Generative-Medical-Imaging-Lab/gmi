@@ -179,3 +179,8 @@ wandb/
 
 # Experiment output directories
 *_experiment/
+
+
+!requirements.txt
+
+3000566.000000-NA-03192/
