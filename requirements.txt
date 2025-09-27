@@ -37,3 +37,6 @@ medmnist>=1.0.0
 pytest>=7.0.0
 pytest-cov>=4.0.0
 pytest-mock>=3.10.0 
+
+# Microsoft Excel file handling
+openpyxl>=3.1.5

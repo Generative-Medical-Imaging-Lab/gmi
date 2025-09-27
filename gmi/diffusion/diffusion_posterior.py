@@ -2,7 +2,7 @@ import torch
 from torch import nn
 from ..sde import LinearSDE, StandardWienerSDE
 from ..linear_system import DiagonalScalar
-from ..distribution import UniformDistribution, GaussianDistribution
+from ..random_variable import UniformRandomVariable, GaussianRandomVariable
 from ..samplers import Sampler
 from .core import DiffusionModel
 
@@ -43,7 +43,7 @@ class DiffusionPosteriorModel(DiffusionModel):
             training_loss_fn = KLDivergenceTrainingLossFn().to(device)
 
         if training_time_sampler is None:
-            training_time_sampler = UniformDistribution(0.0, 1.0)
+            training_time_sampler = UniformRandomVariable(0.0, 1.0)
 
         if training_time_uncertainty_sampler is None:
             class IdentitySampler(Sampler):
@@ -196,7 +196,7 @@ class DiffusionPosteriorModel(DiffusionModel):
 
             mu_pred = mu_pred.detach()
             logvar_pred = logvar_pred.detach()
-            prior_distribution = GaussianDistribution(mu_pred, DiagonalScalar(torch.exp(logvar_pred)))
+            prior_distribution = GaussianRandomVariable(mu_pred, DiagonalScalar(torch.exp(logvar_pred)))
 
             x_recon = x_init.detach().requires_grad_(True)
             optimizer = torch.optim.Adam([x_recon], lr=lr)

@@ -56,7 +56,7 @@ gmi_base/                          # Root directory (git clone location)
 │   │   ├── core.py
 │   │   ├── unconditional.py
 │   │   └── diffusion_posterior.py
-│   ├── distribution/              # Probability distributions
+│   ├── random_variable/           # Random variables (probability distributions)
 │   │   ├── core.py
 │   │   ├── gaussian.py
 │   │   ├── lognormal.py
@@ -360,7 +360,7 @@ dataset:
     images_only: false
 
 measurement_simulator:
-  class: gmi.distribution.gaussian.AdditiveWhiteGaussianNoise
+  class: gmi.random_variable.gaussian.AdditiveWhiteGaussianNoise
   params:
     noise_standard_deviation: 0.1
 

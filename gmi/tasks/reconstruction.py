@@ -112,13 +112,13 @@ class ImageReconstructionTask(nn.Module):
         # Load dataset
         dataset = cls._load_component(config['dataset'], 'dataset')
         
-        # Load measurement simulator (must be a conditional distribution)
+        # Load measurement simulator (must be a conditional random variable)
         measurement_simulator = cls._load_component(config['measurement_simulator'], 'measurement_simulator')
         
-        # Validate that measurement_simulator is a conditional distribution
-        from ..distribution.gaussian import ConditionalGaussianDistribution
-        if not isinstance(measurement_simulator, ConditionalGaussianDistribution):
-            raise ValueError(f"measurement_simulator must be a subclass of ConditionalGaussianDistribution, got {type(measurement_simulator)}")
+        # Validate that measurement_simulator is a conditional random variable
+        from ..random_variable.gaussian import ConditionalGaussianRandomVariable
+        if not isinstance(measurement_simulator, ConditionalGaussianRandomVariable):
+            raise ValueError(f"measurement_simulator must be a subclass of ConditionalGaussianRandomVariable, got {type(measurement_simulator)}")
         
         # Load image reconstructor
         image_reconstructor = cls._load_component(config['image_reconstructor'], 'image_reconstructor')
@@ -950,17 +950,22 @@ class ImageReconstructionTask(nn.Module):
         """
         # call the image_dataset sampler and the measurement_simulator conditional sampler
         images, measurements = self.sample_images_measurements(image_batch_size, measurement_batch_size)
+
+        # get shapes
+        image_shape = images.shape[2:]
+        measurement_shape = measurements.shape[2:]
+
         # combine the image and measurement batch dimensions into one batch dimension
         measurements = measurements.view(image_batch_size*measurement_batch_size, *measurements.shape[2:])
         # call the image_reconstructor conditional sampler
         reconstructions = self.sample_reconstructions_given_measurements(reconstruction_batch_size, measurements)
         assert isinstance(reconstructions, torch.Tensor), 'sample_reconstructions_given_measurements() must return a torch.Tensor'
         # reshape the images to have reconstruction, measurement, and image batch dimensions
-        images = images.view(1,1,image_batch_size, *images.shape[1:])
+        images = images.view(1,1,image_batch_size, *image_shape)
         # reshape the measurements to have reconstruction, measurement, and image batch dimensions
-        measurements = measurements.view(1, measurement_batch_size, image_batch_size, *measurements.shape[1:])
+        measurements = measurements.view(1, measurement_batch_size, image_batch_size, *measurement_shape)
         # reshape the reconstructions to have reconstruction, measurement, and image batch dimensions
-        reconstructions = reconstructions.view(reconstruction_batch_size, measurement_batch_size, image_batch_size, *reconstructions.shape[2:])
+        reconstructions = reconstructions.view(reconstruction_batch_size, measurement_batch_size, image_batch_size, *image_shape)
         return images, measurements, reconstructions
 
     def forward(self, image_batch_size, measurement_batch_size, reconstruction_batch_size):

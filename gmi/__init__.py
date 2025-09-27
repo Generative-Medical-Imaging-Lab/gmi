@@ -2,7 +2,7 @@
 
 from . import linalg
 from . import samplers
-from . import distribution
+from . import random_variable
 from . import sde
 from . import diffusion
 from . import network
@@ -14,7 +14,7 @@ from . import loss_function
 from . import linear_system
 
 from .samplers import Sampler
-from .distribution import Distribution
+from .random_variable import RandomVariable
 from .linalg import LinearSystem
 from .train import train
 

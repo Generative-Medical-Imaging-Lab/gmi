@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 from ..sde import LinearSDE, StandardWienerSDE
-from ..distribution import UniformDistribution
+from ..random_variable import UniformRandomVariable
 from ..samplers import Sampler
 from ..linear_system import InvertibleLinearSystem
 
@@ -28,7 +28,7 @@ class DiffusionModel(torch.nn.Module):
             training_loss_fn = torch.nn.MSELoss()
 
         if training_time_sampler is None:
-            training_time_sampler = UniformDistribution(0.0, 1.0)
+            training_time_sampler = UniformRandomVariable(0.0, 1.0)
 
         if training_time_uncertainty_sampler is None:
             class IdentitySampler(Sampler):

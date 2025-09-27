@@ -137,7 +137,7 @@ Modify the measurement simulator:
 
 ```yaml
 measurement_simulator:
-  class: gmi.distribution.gaussian.AdditiveWhiteGaussianNoise
+  class: gmi.random_variable.gaussian.AdditiveWhiteGaussianNoise
   params:
     noise_standard_deviation: 0.2  # Increase for more noise
 ```

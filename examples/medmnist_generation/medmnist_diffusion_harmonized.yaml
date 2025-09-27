@@ -55,7 +55,7 @@ training_loss_fn:
   params: {}
 
 training_time_sampler:
-  class: gmi.distribution.UniformDistribution
+  class: gmi.random_variable.UniformRandomVariable
   params:
     low: 0.0
     high: 1.0

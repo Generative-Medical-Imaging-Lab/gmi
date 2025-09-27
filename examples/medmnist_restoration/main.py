@@ -4,52 +4,65 @@ import gmi
 import os
 import torchvision.transforms as transforms
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
 
-medmnist_name = 'OrganAMNIST'
-batch_size = 2048
+medmnist_dataset_root = '/workspace/gmi/gmi_data/datasets/medmnist_dataset_root/'
+if not os.path.exists(medmnist_dataset_root):
+    os.makedirs(medmnist_dataset_root)
+
+medmnist_name = 'BloodMNIST'
+batch_size = 32
 
 medmnist_example_dir = os.path.dirname(os.path.abspath(__file__))
 
 # Create the dataset with the target_transform set to discard the label
 
 dataset_train = gmi.datasets.MedMNIST(medmnist_name, 
-                                      split='train', 
+                                      split='train',
+                                      root=medmnist_dataset_root, 
                                       download=True, 
                                       images_only=True)
 
 dataset_val = gmi.datasets.MedMNIST(medmnist_name,
                                     split='val',
+                                    root=medmnist_dataset_root, 
                                     download=True,
                                     images_only=True)
 
 dataset_test = gmi.datasets.MedMNIST(medmnist_name,
                                         split='test',
+                                        root=medmnist_dataset_root, 
                                         download=True,
                                         images_only=True)
 
 dataloader_train = torch.utils.data.DataLoader(dataset_train, 
                                                 batch_size=batch_size, 
                                                 shuffle=True,
-                                                num_workers=1)
+                                                pin_memory=True,
+                                                persistent_workers=True,
+                                                num_workers=4)
 
 dataloader_val = torch.utils.data.DataLoader(dataset_val,
                                                 batch_size=batch_size,
-                                                shuffle=False,
-                                                num_workers=1)
+                                                shuffle=True,
+                                                pin_memory=True,
+                                                persistent_workers=True,
+                                                num_workers=4)
 
 dataloader_test = torch.utils.data.DataLoader(dataset_test,
                                                 batch_size=batch_size,
                                                 shuffle=False,
-                                                num_workers=1)
+                                                pin_memory=True,
+                                                persistent_workers=True,
+                                                num_workers=4)
 
 
 # define the measurement simulator
 white_noise_adder = gmi.distribution.AdditiveWhiteGaussianNoise(
                                                     noise_standard_deviation=0.1)
 
-denoiser = gmi.network.SimpleCNN(input_channels=1,
-                                    output_channels=1,
+denoiser = gmi.network.SimpleCNN(input_channels=3,
+                                    output_channels=3,
                                     hidden_channels_list=[16, 32, 64, 128, 256, 128, 64, 32, 16],
                                     activation=torch.nn.SiLU(),
                                     dim=2).to(device)
@@ -65,15 +78,16 @@ mnist_denoising_task = gmi.tasks.ImageReconstructionTask(
 loss_closure = mnist_denoising_task.loss_closure(torch.nn.MSELoss())
 
 # train the denoiser
-gmi.train(  dataloader_train, 
-            loss_closure, 
-            num_epochs=100, 
+gmi.train(  train_data=dataloader_train, 
+            val_data=dataloader_val,
+            train_loss_closure=loss_closure,
+            val_loss_closure=loss_closure,  
+            num_epochs=10, 
             num_iterations=100,
+            num_iterations_val=10,
             optimizer=None,
             lr=1e-3, 
             device=device, 
-            validation_loader=dataloader_val, 
-            num_iterations_val=10,
             verbose=True)
 
 
@@ -93,6 +107,8 @@ measurements = measurements.cpu().detach().numpy()
 reconstructions = reconstructions.cpu().detach().numpy()
 
 fig = plt.figure(figsize=(10, 10))
+fig.subplots_adjust(left=0.01, right=0.99, top=0.99, bottom=0.01, hspace=0.01, wspace=0.01)
+
 for i in range(9):
     ax = fig.add_subplot(3, 3, i + 1)
     ax.imshow(images[0,0,i].transpose(1,2,0), cmap='gray', vmin=0, vmax=1)
@@ -100,6 +116,8 @@ for i in range(9):
 plt.savefig(medmnist_example_dir + '/images.png')
 
 fig = plt.figure(figsize=(10, 10))
+fig.subplots_adjust(left=0.01, right=0.99, top=0.99, bottom=0.01, hspace=0.01, wspace=0.01)
+
 for i in range(9):
     ax = fig.add_subplot(3, 3, i + 1)
     ax.imshow(measurements[0,0,i].transpose(1,2,0), cmap='gray', vmin=0, vmax=1)
@@ -107,6 +125,8 @@ for i in range(9):
 plt.savefig(medmnist_example_dir + '/measurements.png')
 
 fig = plt.figure(figsize=(10, 10))
+fig.subplots_adjust(left=0.01, right=0.99, top=0.99, bottom=0.01, hspace=0.01, wspace=0.01)
+
 for i in range(9):
     ax = fig.add_subplot(3, 3, i + 1)
     ax.imshow(reconstructions[0,0,i].transpose(1,2,0), cmap='gray', vmin=0, vmax=1)
