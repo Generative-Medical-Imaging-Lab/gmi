@@ -58,7 +58,7 @@ dataloader_test = torch.utils.data.DataLoader(dataset_test,
 
 
 # define the measurement simulator
-white_noise_adder = gmi.distribution.AdditiveWhiteGaussianNoise(
+white_noise_adder = gmi.random_variable.AdditiveWhiteGaussianNoise(
                                                     noise_standard_deviation=0.1)
 
 denoiser = gmi.network.SimpleCNN(input_channels=3,

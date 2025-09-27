@@ -77,7 +77,7 @@ dataset_test = gmi.datasets.MedMNIST(medmnist_name,
                                      download=True,
                                      images_only=images_only)
 
-white_noise_adder = gmi.distribution.AdditiveWhiteGaussianNoise(
+white_noise_adder = gmi.random_variable.AdditiveWhiteGaussianNoise(
                                                     noise_standard_deviation=0.2)
 def add_noise(y):
     """"
