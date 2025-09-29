@@ -11,12 +11,12 @@ import math
 
 device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
 
-train_dataset = gmi.datasets.kaggle.UCIMLBreastCancerWisconsinDataset(split='train', download=True)
+train_dataset = gmi.datasets.kagglehub.UCIMLBreastCancerWisconsinDataset(split='train', download=True)
 drop_columns = train_dataset.df.columns.tolist(); drop_columns.pop(10); drop_columns.pop(6) # only keep symmetry and smoothness
 
-train_dataset = gmi.datasets.kaggle.UCIMLBreastCancerWisconsinDataset(split='train', download=True, drop_columns=drop_columns)
-val_dataset = gmi.datasets.kaggle.UCIMLBreastCancerWisconsinDataset(split='val', download=True, drop_columns=drop_columns)
-test_dataset = gmi.datasets.kaggle.UCIMLBreastCancerWisconsinDataset(split='test', download=True, drop_columns=drop_columns)
+train_dataset = gmi.datasets.kagglehub.UCIMLBreastCancerWisconsinDataset(split='train', download=True, drop_columns=drop_columns)
+val_dataset = gmi.datasets.kagglehub.UCIMLBreastCancerWisconsinDataset(split='val', download=True, drop_columns=drop_columns)
+test_dataset = gmi.datasets.kagglehub.UCIMLBreastCancerWisconsinDataset(split='test', download=True, drop_columns=drop_columns)
 
 data_dim = train_dataset[0:1][0].size(1)
 

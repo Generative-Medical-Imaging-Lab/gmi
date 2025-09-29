@@ -136,3 +136,86 @@ class TrainableGaussian(RandomVariable):
         # score is -invSigma @ (x - mu)
         res = x - self.mu.unsqueeze(0)
         return torch.einsum('bi,ij->bj', res, -self.invSigma)
+
+
+class TrainableSparseGaussian(RandomVariable):
+    def __init__(self, dim, num_principal_components=None, eps=None):
+        super(TrainableSparseGaussian, self).__init__()
+        self.dim = dim
+        self.mu = torch.nn.Parameter(torch.zeros(dim))
+        
+        # Set default num_principal_components if not provided
+        if num_principal_components is None:
+            num_principal_components = min(dim, 50)  # Default to min(dim, 50)
+        
+        self.num_principal_components = num_principal_components
+        self.eps = eps
+        
+        # Rectangular sigma matrix (dim x num_principal_components)
+        self.sigma = torch.nn.Parameter(torch.randn(dim, num_principal_components) * 0.1)
+        
+    def get_Sigma(self):
+        # Sigma = sigma @ sigma^T + eps * I
+        base_cov = self.sigma @ self.sigma.T
+        
+        if self.eps is None:
+            # Use smallest eigenvalue of base covariance as eps
+            eigenvals = torch.linalg.eigvals(base_cov).real
+            eps_val = torch.min(eigenvals).item()
+            if eps_val <= 0:
+                eps_val = 1e-3
+        else:
+            eps_val = self.eps
+            
+        return base_cov + eps_val * torch.eye(self.dim, device=base_cov.device)
+    
+    def set_Sigma(self, value):
+        # This is more complex for sparse case, approximate with SVD
+        U, S, Vt = torch.linalg.svd(value)
+        # Take top num_principal_components
+        k = min(self.num_principal_components, len(S))
+        self.sigma.data = U[:, :k] @ torch.diag(torch.sqrt(S[:k]))
+    
+    Sigma = property(get_Sigma, set_Sigma)
+    
+    def get_invSigma(self):
+        try:
+            inv_Sigma = torch.linalg.inv(self.Sigma)
+        except Exception as e:
+            print(f"Warning, Error in computing invSigma, adding small identity for stability")  
+            inv_Sigma = torch.linalg.inv(self.Sigma + 1e-3 * torch.eye(self.dim, device=self.Sigma.device))
+        return inv_Sigma
+    
+    def set_invSigma(self, value):
+        self.Sigma = torch.linalg.inv(value)
+        
+    invSigma = property(get_invSigma, set_invSigma)
+    
+    def sample(self, batch_size):
+        # Sample from low-rank + diagonal structure
+        # z ~ N(0, I_k), n ~ N(0, eps*I_d)  
+        z = torch.randn((batch_size, self.num_principal_components), device=self.mu.device)
+        
+        eps_val = self.eps if self.eps is not None else 1e-3
+        noise = torch.randn((batch_size, self.dim), device=self.mu.device) * torch.sqrt(torch.tensor(eps_val))
+        
+        # sigma @ z + eps^(1/2) * noise + mu
+        low_rank_part = z @ self.sigma.T
+        return self.mu.unsqueeze(0) + low_rank_part + noise
+    
+    def log_prob(self, x):
+        assert x.dim() == 2  # (batch_size, dim)
+        assert x.size(1) == self.dim
+        batch_size = x.size(0)
+        
+        constant_term = torch.ones([], device=x.device) * self.dim * 2 * math.log(2 * math.pi)
+        log_det = torch.logdet(self.Sigma)
+        res = x - self.mu.unsqueeze(0)
+        weighted_res = torch.einsum('bi,ij->bj', res, self.invSigma)
+        mahalanobis_distance = torch.einsum('bi,bi->b', res, weighted_res).view(batch_size, 1, 1)
+        return -0.5 * (constant_term + log_det + mahalanobis_distance).view(batch_size)
+    
+    def score(self, x):
+        # score is -invSigma @ (x - mu)
+        res = x - self.mu.unsqueeze(0)
+        return torch.einsum('bi,ij->bj', res, -self.invSigma)

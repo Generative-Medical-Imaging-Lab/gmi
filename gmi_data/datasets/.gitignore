@@ -3,6 +3,9 @@
 *.png
 *.mp4
 *.csv
+*.npz
+
 
 MedMNIST/
 MNIST/
+medmnist_dataset_root/
