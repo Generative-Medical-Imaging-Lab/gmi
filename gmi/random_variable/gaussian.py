@@ -93,6 +93,42 @@ class AdditiveWhiteGaussianNoise(ConditionalGaussianRandomVariable):
         self.noise_variance = noise_variance
 
 
+class ConditionalGaussianDenoiser(ConditionalGaussianRandomVariable):
+    """
+    Conditional Gaussian denoiser that learns a mean estimator with fixed covariance.
+    
+    This implements p_θ(x|y) = N(μ_θ(y), σ²I) where:
+    - μ_θ(y) is a neural network that estimates clean signals from noisy measurements
+    - σ²I is a fixed identity covariance matrix
+    
+    Args:
+        mean_estimator (nn.Module): Neural network that maps measurements to mean estimates
+        noise_std (float): Standard deviation of the noise model (default: 0.1)
+    """
+    def __init__(self, mean_estimator, noise_std=0.1):
+        # Store parameters
+        self.noise_std = noise_std
+        
+        # Define mean and covariance functions using the passed mean_estimator
+        def mu_fn(y):
+            return mean_estimator(y)
+        
+        def Sigma_fn(y):
+            # Create noise covariance on the same device as y
+            noise_variance = torch.tensor(noise_std ** 2, device=y.device, dtype=y.dtype)
+            return Scalar(noise_variance)
+        
+        # Call parent constructor first
+        super().__init__(mu_fn, Sigma_fn)
+        
+        # Now we can assign the module
+        self.mean_estimator = mean_estimator
+    
+    def get_mean_estimate(self, y):
+        """Get the mean estimate μ_θ(y) directly"""
+        return self.mean_estimator(y)
+
+
 
 
 

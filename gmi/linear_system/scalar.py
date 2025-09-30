@@ -97,6 +97,20 @@ class Scalar(DiagonalScalar, InvertibleLinearSystem):
             raise ValueError("The scalar is zero, so the inverse does not exist.")
         return y / self.scalar
     
+    def inv_LinearSystem(self):
+        """
+        This method returns the inverse linear system.
+        
+        returns:
+            result: Scalar
+                The inverse linear system.
+        raises:
+            ValueError: If the scalar is zero.
+        """
+        if torch.any(self.scalar == 0):
+            raise ValueError("The scalar is zero, so the inverse does not exist.")
+        return Scalar(1 / self.scalar)
+    
     def inverse_LinearSystem(self):
         """
         This method returns the inverse linear system.
