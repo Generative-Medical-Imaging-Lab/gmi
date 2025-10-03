@@ -1,17 +1,20 @@
 # FROM python:3.12-slim
-FROM nvidia/cuda:12.8.1-cudnn-runtime-ubuntu22.04
+# FROM nvidia/cuda:12.8.1-cudnn-runtime-ubuntu22.04
+ARG CUDA_MAJOR=12
+ARG CUDA_MINOR=9
+FROM nvidia/cuda:${CUDA_MAJOR}.${CUDA_MINOR}.0-devel-ubuntu22.04 AS base_image
+
 
 # Install system dependencies using apt package manager
-RUN apt-get update && apt-get install -y python3 python3-pip ffmpeg git build-essential libglib2.0-0 libsm6 libxrender1 libxext6 && rm -rf /var/lib/apt/lists/*
-
-# Make python3 and pip3 symlinks
-RUN ln -sf python3 /usr/bin/python && ln -sf pip3 /usr/bin/pip
-
-# Upgrade pip python package manager
-RUN pip install --upgrade pip
-
-# Install PyTorch 12.8 with CUDA support
-RUN pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+RUN apt-get update && apt-get upgrade -y
+RUN apt-get install -y python3 
+RUN apt-get install -y python3-pip 
+RUN apt-get install -y python3-venv
+RUN apt-get install -y ffmpeg 
+RUN apt-get install -y git 
+RUN apt-get install -y build-essential libglib2.0-0 libsm6 libxrender1 libxext6
+RUN apt-get install -y sudo
+RUN rm -rf /var/lib/apt/lists/*
 
 # Cache buster for user creation - rebuild from here if UID/GID changes
 ARG CACHEBUST=1
@@ -30,30 +33,31 @@ ARG CACHEBUST=1
 ARG USER_ID=1000
 ARG GROUP_ID=1000
 RUN groupadd -o -g $GROUP_ID -f gmi_user && \
-    useradd -o -u $USER_ID -g $GROUP_ID -m -s /bin/bash gmi_user
+    useradd -o -u $USER_ID -g $GROUP_ID -m -s /bin/bash gmi_user && \
+    usermod -aG sudo gmi_user && \
+    echo "gmi_user ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
-# Create gmi_base directory and set ownership
-RUN mkdir -p /gmi_base && chown gmi_user:gmi_user /gmi_base
+# Create workspace directory and set ownership
+RUN mkdir -p /workspace/ && chown gmi_user:gmi_user /workspace/
+RUN mkdir -p /data/ && chown gmi_user:gmi_user /data/
+
+# Create a python virtal environment with proper ownership
+RUN python3 -m venv /opt/venv && chown -R gmi_user:gmi_user /opt/venv
+
+# Prepend the virtual environment path to PATH to make it the default
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Switch to non-root user early so all pip installs happen as the user
+USER gmi_user
+
+# Upgrade pip python package manager in the virtual environment
+RUN pip install --upgrade pip
+
+# Install PyTorch with CUDA support
+RUN pip install torch torchvision --index-url https://download.pytorch.org/whl/cu129
 
 # Set working directory
-WORKDIR /gmi_base
-
-# Copy requirements.txt and install Python dependencies
-COPY requirements.txt /gmi_base/
-RUN pip install -r requirements.txt
-
-# Copy GMI source code
-COPY gmi/ /gmi_base/gmi/
-COPY setup.py /gmi_base/
-
-# Install GMI package in editable mode
-RUN pip install -e .
-
-# Change ownership of all copied files
-RUN chown -R gmi_user:gmi_user /gmi_base
-
-# Switch to non-root user
-USER gmi_user
+WORKDIR /workspace/
 
 # Set default command
 CMD ["tail", "-f", "/dev/null"] 

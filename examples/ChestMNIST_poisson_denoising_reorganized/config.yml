@@ -1,0 +1,32 @@
+# ChestMNIST Poisson Denoising Configuration
+data:
+  dataset_name: 'ChestMNIST'
+  dataset_root: '/data/medmnist/'
+  image_size: 64
+  batch_size: 32
+  num_workers: 4
+
+physics:
+  mu: 4.0  # Attenuation coefficient
+  I0: 100.0  # Incident photon intensity
+
+model:
+  noise_std: 0.1
+  unet_channels: [64, 128, 256, 512]
+  unet_depth: 4
+
+training:
+  num_epochs: 100
+  num_iterations: 1000
+  num_iterations_val: 500
+  learning_rate: 1e-3
+  weight_decay: 1e-5
+  device: 'cuda'
+  save_model: true
+  model_save_path: 'chest_denoiser.pth'
+
+output:
+  output_dir: null  # null means use script directory + outputs
+  animation_path: 'chest_xray_denoising_animation.mp4'
+  animation_fps: 2
+  animation_bitrate: 1200

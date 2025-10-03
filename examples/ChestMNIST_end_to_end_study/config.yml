@@ -1,0 +1,29 @@
+# ChestMNIST End-to-End Study Configuration
+data:
+  dataset_name: 'ChestMNIST'
+  dataset_root: '/workspace/gmi/gmi_data/datasets/medmnist_dataset_root/'
+  image_size: 64
+  batch_size: 32
+  num_workers: 4
+
+# Pre-trained model paths
+pretrained_models:
+  classifier_path: '../ChestMNIST_classification_reorganized/outputs/chest_classifier.pth'
+  denoiser_path: '../ChestMNIST_poisson_denoising_reorganized/outputs/chest_denoiser.pth'
+
+# Simulation study parameters
+simulation:
+  dose_levels: [10.0, 25.0, 50.0, 100.0, 200.0]  # Different I0 values to test
+  num_test_samples: 100  # Number of test samples to evaluate
+  mu: 4.0  # Attenuation coefficient (should match denoiser training)
+
+# Output settings
+output:
+  output_dir: 'outputs'
+  results_csv: 'end_to_end_results.csv'
+  visualization_dir: 'visualizations'
+  save_sample_images: true
+  num_visualization_samples: 10
+
+# Device
+device: 'cuda'

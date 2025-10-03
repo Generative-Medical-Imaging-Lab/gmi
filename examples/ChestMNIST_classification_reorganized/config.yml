@@ -1,0 +1,41 @@
+# ChestMNIST Classification Configuration
+data:
+  dataset_name: 'ChestMNIST'
+  dataset_root: '/data/medmnist/'
+  image_size: 64
+  batch_size: 128
+  num_workers: 4
+
+model:
+  num_labels: 14
+  backbone: 'microsoft/resnet-50'
+  dropout_rate: 0.1
+
+training:
+  num_epochs: 100
+  num_iterations: 100
+  num_iterations_val: 20
+  learning_rate: 1e-4
+  weight_decay: 1e-5
+  device: 'cuda:1'
+  save_model: true
+  model_save_path: 'chest_classifier.pth'  # Saved relative to output_dir
+
+# Execution control
+execution:
+  run_training: false  # Whether to run training and animation
+  run_evaluation: true  # Whether to run evaluation after training
+
+output:
+  output_dir: null  # If null, defaults to 'outputs/' in project directory
+  animation_path: 'chestmnist_classification_animation.mp4'
+  animation_fps: 2
+  animation_bitrate: 1200
+
+augmentation:
+  rotation_degrees: 10
+  translate: [0.1, 0.1]
+  scale: [0.9, 1.1]
+  shear: 5
+  brightness: 0.2
+  contrast: 0.2

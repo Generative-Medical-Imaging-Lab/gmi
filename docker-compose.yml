@@ -9,10 +9,16 @@ services:
     image: gmi-image
     container_name: gmi-container
     volumes:
-      - .:/gmi_base
-    working_dir: /gmi_base
+      - /home/staticct/matt/workspace:/workspace
+      - /home/staticct/data:/data
+    working_dir: /workspace
     environment:
-      - PYTHONPATH=/gmi_base
+      # - PYTHONPATH=/workspace
+      # needed for ct_laboratory install
+      - TORCH_CUDA_ARCH_LIST=8.0
+      - CUDA_HOME=/usr/local/cuda
+      # needed for kagglehub datasets to go to /data/
+      - KAGGLEHUB_CACHE=/data/kagglehub_cache
     # Enable GPU support if available
     deploy:
       resources:
